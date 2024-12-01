@@ -19,4 +19,8 @@ venv:
 data:
 	$(PYTHON) $(FLAG) $(MODULE).data
 
-.PHONY: venv data
+clean_data:
+	rm -rf data/raw/*/
+	rm -f data/raw/**/*.log
+
+.PHONY: venv data clean_data
