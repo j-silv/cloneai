@@ -1,0 +1,8 @@
+dir:
+  data:
+    raw: data/raw
+    processed: data/processed
+
+data:
+  merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
+  ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
