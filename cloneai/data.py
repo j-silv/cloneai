@@ -20,16 +20,6 @@ by the ML models
     - Are in WAV format (not necessary, can be flac as well)
     - Have a sample rate of 16kHz (this should be done)
     - Are mono-channel (this should also be done)
-
-    
-TODO: when iterating through the intermediate data folders, we should just use the os.walk() method
-      instead of relying on the number of zips that are determined from each folder.
-      I guess it is pretty equivalent but meh. I guess it doesn't really matter both are correct
-
-TODO: save disk space. Right now I am just making sure all the steps work
-      but for final script I want to delete zip files as we go and move files as we go
-      otherwise I will need a really big drive to do this. Right now I see that the data folder is taking up
-      150 GBs!!! And we started with 20 GBs. So delete zip files as we go once I know everything works 
 """
 
 import zipfile
@@ -82,11 +72,7 @@ def extract_zips(in_dir, out_dir, nested=False, clean=False):
         print("\nNumber of extractions:", extraction_num, file=log, flush=True)
     return extraction_num
 
-
-
-
-
-def group_tracks(raw_dir, num_recordings, merge, ignore):
+def group_tracks(in_dir, out_dir, merge, ignore, clean=False):
     """Group all individual tracks into a central location
 
     Return dictionary for unique track speakers based on track name
@@ -94,66 +80,78 @@ def group_tracks(raw_dir, num_recordings, merge, ignore):
     Each key will be the unique name of the speaker, and the value will
     be another dictionary that has a key for the directory location for all
     tracks belonging to that speaker, and the number of tracks for that speaker
+
+    output files are copied to speaker specific directory and are of the format:
+    "REC_TRACK.EXT" where:
+        REC    : recording number
+        TRACK  : track number for this speaker
+        EXT    : {"acc", "flac"}
+    
+    with REC and TRACK we can determine information on the distribution of speakers
+    for each recording later
+
+    Params:
+        in_dir  : root folder with extracted audio files
+        out_dir : output directory
+        merge   : list of speaker names to merge into one
+        ignore  : list of speakers to ignore
+        clean   : delete extracted audio file folders as we group
+
+    Returns:
+        speaker dictionary
     """
     speaker = dict()
 
-    for i in range(num_recordings):
-        for root, file_dir, files in os.walk(os.path.join(raw_dir, "all", str(i))):
-            print(root, file_dir, files)
+    for root, file_dir, files in os.walk(os.path.join(in_dir)):
+        if len(file_dir) != 0:
+            # because we are at the directory not the sub-directory level
+            continue
+        
+        for file in files:
+            # because we want to identify just the string part of the name
+            name = re.match(r"\d+-(\D+)_?\d+", file)
+            if name is None:
+                # raw.dat or info.txt
+                continue
+            
+            # first capturing group above just gets the discord name
+            # because some usernames have _ we just get the text name
+            name = name.group(1)
+            name = re.sub(r"_", r"", name) 
 
-            for file in files:
-                # because we want to identify just the string part of the name
-                name = re.match(r"\d+-(\D+)_?\d+", file)
-                if name is None:
-                    # raw.dat or info.txt
-                    continue
-                
-                name = name.group(1)
+            if name in ignore:
+                continue
+            if name in merge:
+                name = merge[0]
 
+            ext = re.search(r"\w+$", file).group(0)
 
-                # because some usernames have _ 
-                name = re.sub(r"_", r"", name) 
+            if name not in speaker:
+                speaker_dir = os.path.join(out_dir, f"{str(len(speaker))}-{name}")
+                os.makedirs(speaker_dir, exist_ok=True)
+                speaker[name] = dict(dir=speaker_dir, num=0)
+            
+            src = os.path.join(root, file)
+            dest = os.path.join(speaker[name]["dir"], f"{os.path.basename(root)}_{str(speaker[name]['num'])}.{ext}")
+            shutil.copy2(src, dest)
+            speaker[name]["num"] += 1
 
-                if name in ignore:
-                    continue
-
-                if name in merge:
-                    name = merge[0]
-
-                ext = re.search(r"\w+$", file).group(0)
-
-                if name not in speaker:
-                    speaker_dir = os.path.join(raw_dir, "speaker", f"{str(len(speaker))}-{name}")
-                    #os.makedirs(speaker_dir, exist_ok=True)
-                    speaker[name] = dict(dir=speaker_dir, num=0)
-                
-                # output file is of format REC#_NUM#.ext where
-                # ext == {"acc", "flac"}
-                # REC# == recording number
-                # NUM# == track number for this speaker
-                # with these 2 pieces of information we can determine which how many recordings each person is in
-
-                # os.rename(os.path.join(root, file), os.path.join(speaker[name]["dir"], f"{str(i)}_{str(speaker[name]['num'])}.{ext}"))
-                
-                # we might want to replace this with the one above because then we have extra space 
-                # but we can just delete this stuff later i guess 
-                #shutil.copy2(os.path.join(root, file), os.path.join(speaker[name]["dir"], f"{str(i)}_{str(speaker[name]['num'])}.{ext}"))
-                speaker[name]["num"] += 1
-
+        if clean is True:
+            shutil.rmtree(root)
+        
     return speaker
 
-def combine_speakears():
-    """Merge speaker tracks together if same person
+def preprocess_audio(in_dir, config):
+    """Convert all audio files to specific format and split for ML training
     
-    
-    This is an optional step because some usernames had changed perhaps
-    This will merge together tracks from speakers. We probably should just do this 
-    in the previous function though because that is when we are creating it
-    We will also have an ignore speaker name (like Maki, Alistair, Craig, etc.)
-    So ignore speaker and also merge speakers 
+    Params:
+        config   : dict for controlling audio preprocessing
+            format       : convert to this audio format
+            sampling     : convert to this sampling rate
+            top_db       : threshold in decibels below reference to consider as silence
+            frame_length : the number of samples per analysis frame
+            hop_length   : the number of samples between anlysis frames
     """
-    pass
-
 
 if __name__ == "__main__":
     ROOT = os.getcwd()
@@ -161,22 +159,17 @@ if __name__ == "__main__":
     with open('config.yaml', 'r') as file:
         config = yaml.safe_load(file)
     raw_dir = os.path.join(ROOT, config["dir"]["data"]["raw"])
+    out_dir = os.path.join(raw_dir, "extracted")
     
     print("Extracting audio data archives... this might take a while")
 
-
     # we will call this function twice as we have a nested 
     # zip archive. the first time will be False and the second time True
-    out_dir = os.path.join(raw_dir, "extracted")
-    extract_zips(raw_dir, out_dir, nested=True, clean=False)
-    extract_zips(out_dir, out_dir, nested=False, clean=True)
+    # extract_zips(raw_dir, out_dir, nested=True, clean=False)
+    # extract_zips(out_dir, out_dir, nested=False, clean=True)
 
-    # # num_zips = 7
-    # # num_recordings = extract_craig_zips(raw_dir, num_zips)
+    speaker_dir = os.path.join(raw_dir, "speaker")
+    # group_tracks(out_dir, speaker_dir, config["data"]["merge"], config["data"]["ignore"], clean=True)
 
-    # num_recordings = 877 # hard-coded to test individual functions
-
-
-    # speaker = group_tracks(raw_dir, num_recordings, config["data"]["merge"], config["data"]["ignore"])
-
+    
 
