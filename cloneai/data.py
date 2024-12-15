@@ -28,6 +28,10 @@ import os
 import glob
 import re
 import shutil
+import librosa
+import ffmpeg
+import matplotlib.pyplot as plt
+import soundfile as sf
 
 def extract_zips(in_dir, out_dir, nested=False, clean=False):
     """Extract zip files from in_dir to out_dir
@@ -141,9 +145,16 @@ def group_tracks(in_dir, out_dir, merge, ignore, clean=False):
         
     return speaker
 
-def preprocess_audio(in_dir, config):
+def process_audio(in_dir, out_dir, config):
     """Convert all audio files to specific format and split for ML training
     
+    Uses librosa and ffmpeg utility to load in audio files
+    and split on silence to detect sentence boundaries
+
+    ffmpeg usage is required because the raw audio files are in .aac format
+    and soundread (library that librosa uses for loading) does not support
+    MP3 and MP4 formats
+
     Params:
         config   : dict for controlling audio preprocessing
             format       : convert to this audio format
@@ -151,7 +162,78 @@ def preprocess_audio(in_dir, config):
             top_db       : threshold in decibels below reference to consider as silence
             frame_length : the number of samples per analysis frame
             hop_length   : the number of samples between anlysis frames
+
+    Also we could avoid using librosa (kind of unnecessary)
+    and just use ffmpeg and use the existing filter:
+    https://github.com/kkroening/ffmpeg-python/blob/master/examples/split_silence.py
+    https://ffmpeg.org/ffmpeg-filters.html
+    silencedetect 
+
+    that actually splits silence based on dB and a silence duration
+    then once we have that information we can output the right timestamps
     """
+    for root, file_dir, files in os.walk(os.path.join(in_dir)):
+        if len(file_dir) != 0:
+            # because we are at the directory not the sub-directory level
+            continue
+
+        sentence_dir = os.path.join(out_dir, os.path.basename(root))
+        os.makedirs(sentence_dir, exist_ok=True)
+
+        for file in files:
+            print("Processing", file)
+            name = re.match(r"(\w+)\.", file).group(1)
+
+            inter_file = os.path.join(sentence_dir, f"{name}.{config['inter_format']}")
+            
+            (ffmpeg
+                .input(os.path.join(root, file))
+                .output(inter_file, ac=1)
+                .overwrite_output()
+                .run()
+            )
+
+            y, sr = librosa.load(inter_file, sr=config["sr"], mono=True)
+
+            frame_length = librosa.time_to_samples(config["frame_length_s"], sr=sr)
+            hop_length = librosa.time_to_samples(config["hop_length_s"], sr=sr)
+
+            print(frame_length, hop_length)
+
+            sentences = librosa.effects.split(y, top_db=config["top_db"],
+                                                frame_length=frame_length,
+                                                hop_length=hop_length)
+
+            print(librosa.samples_to_time(sentences, sr=sr))
+
+            # librosa.display.waveshow(y, sr=sr)
+
+            # for start, end in librosa.samples_to_time(sentences, sr=sr):
+            #     plt.axvspan(start, end, color='red', alpha=0.3, label='Interval')  # Shaded bar
+
+            # plt.xlim(70, 90)  
+            # plt.show()
+
+
+            mask = (sentences[:,1]-sentences[:,0]) > librosa.time_to_samples(config["min_length_s"], sr=sr)
+            filtered_sentences = sentences[mask]
+            
+            for i, sentence in enumerate(filtered_sentences):
+                outfile = os.path.join(sentence_dir, f"{i}.{config['out_format']}")
+
+                start_time_s = librosa.samples_to_time(sentence[0], sr=sr)
+                end_time_s = librosa.samples_to_time(sentence[1], sr=sr)
+
+               
+                # TODO -> might need the -c copy option if out_format is same as in_format?
+                #         I'm not sure if ffmpeg is smart enough to not reencode 
+                test = (ffmpeg
+                    .input(os.path.join(root, file), ss=start_time_s, to=end_time_s)
+                    .output(outfile, ar=sr)
+                    .overwrite_output()
+                    .run()
+                )         
+
 
 if __name__ == "__main__":
     ROOT = os.getcwd()
@@ -159,6 +241,7 @@ if __name__ == "__main__":
     with open('config.yaml', 'r') as file:
         config = yaml.safe_load(file)
     raw_dir = os.path.join(ROOT, config["dir"]["data"]["raw"])
+    processed_dir = os.path.join(ROOT, config["dir"]["data"]["processed"])
     out_dir = os.path.join(raw_dir, "extracted")
     
     print("Extracting audio data archives... this might take a while")
@@ -170,6 +253,13 @@ if __name__ == "__main__":
 
     speaker_dir = os.path.join(raw_dir, "speaker")
     # group_tracks(out_dir, speaker_dir, config["data"]["merge"], config["data"]["ignore"], clean=True)
+    print("Extraction completed")
 
-    
+    print("Starting audio preprocessing")
+    # process_audio(os.path.join(speaker_dir, "2-scott"), processed_dir, config["data"]["audio"])
+
+    shutil.rmtree(os.path.join(processed_dir, "processed"), ignore_errors=True)
+    process_audio(processed_dir, processed_dir, config["data"]["audio"])
+
+
 

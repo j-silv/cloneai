@@ -19,8 +19,14 @@ venv:
 data:
 	$(PYTHON) $(FLAG) $(MODULE).data
 
+stream:
+	$(PYTHON) $(FLAG) $(MODULE).stream
+
 clean_data:
 	rm -rf data/raw/*/
 	rm -f data/raw/**/*.log
 
-.PHONY: venv data clean_data
+clean_processed:
+	rm -rf data/processed/*
+
+.PHONY: venv data clean_data clean_processed
