@@ -29,6 +29,7 @@ import glob
 import re
 import shutil
 import librosa
+import subprocess
 import ffmpeg
 import matplotlib.pyplot as plt
 import soundfile as sf
@@ -145,6 +146,60 @@ def group_tracks(in_dir, out_dir, merge, ignore, clean=False):
         
     return speaker
 
+def get_silences(infile):
+    """Use ffmpeg to detect silence regions of audio
+    
+    This is based on an example using ffmpeg-python located here:
+    https://github.com/kkroening/ffmpeg-python/blob/master/examples/split_silence.py
+    
+    Some differences include avoiding ffmpeg-python library (raw subprocess calls)
+    and also just collecting the raw silence start/end timestamps instead of converting that 
+    to chunk_start and chunk_end times (this is done later)
+    """
+
+    cmd = ["ffmpeg", "-hide_banner",
+        "-i", infile,
+        "-filter_complex",
+        "silencedetect=d=2.0:n=-60dB",
+        "-f", "null", "-"
+    ]
+    # print(" ".join(cmd))
+
+    silence_start_re = re.compile(r' silence_start: (?P<start>[0-9]+(\.?[0-9]*))$')
+    silence_end_re = re.compile(r' silence_end: (?P<end>[0-9]+(\.?[0-9]*)) ')
+    total_duration_re = re.compile(r'size=[^ ]+ time=(?P<hours>[0-9]{2}):(?P<minutes>[0-9]{2}):(?P<seconds>[0-9\.]{5}) bitrate=')
+
+    result = subprocess.run(cmd, capture_output=True)
+    lines = result.stderr.decode("utf-8").splitlines()
+
+    starts = []
+    ends = []
+
+    for line in lines:
+
+        silence_start_match = silence_start_re.search(line)
+        silence_end_match = silence_end_re.search(line)
+        total_duration_match = total_duration_re.search(line)
+
+        if silence_start_match:
+            starts.append(float(silence_start_match.group('start')))
+        elif silence_end_match:
+            ends.append(float(silence_end_match.group('end')))
+        elif total_duration_match:
+            hours = int(total_duration_match.group('hours'))
+            minutes = int(total_duration_match.group('minutes'))
+            seconds = float(total_duration_match.group('seconds'))
+            end_time = hours * 3600 + minutes * 60 + seconds
+
+    assert len(starts) >= len(ends), "Less number of starts than ends should never occur"
+
+    # to assure that len(starts) == len(ends) for iteration later
+    # this handles ending with silence
+    if len(starts) > len(ends):
+        ends.append(end_time) 
+
+    return starts, ends, end_time
+
 def process_audio(in_dir, out_dir, config):
     """Convert all audio files to specific format and split for ML training
     
@@ -171,6 +226,9 @@ def process_audio(in_dir, out_dir, config):
 
     that actually splits silence based on dB and a silence duration
     then once we have that information we can output the right timestamps
+
+    there is also "silenceremove" filter but this doesn't split into
+    separate files which is what we want... we need the timestamps 
     """
     for root, file_dir, files in os.walk(os.path.join(in_dir)):
         if len(file_dir) != 0:
@@ -183,56 +241,59 @@ def process_audio(in_dir, out_dir, config):
         for file in files:
             print("Processing", file)
             name = re.match(r"(\w+)\.", file).group(1)
+            ext = re.search(r"\w+$", file).group(0)
+            infile = os.path.join(root, file)
 
-            inter_file = os.path.join(sentence_dir, f"{name}.{config['inter_format']}")
-            
-            (ffmpeg
-                .input(os.path.join(root, file))
-                .output(inter_file, ac=1)
-                .overwrite_output()
-                .run()
-            )
+            starts, ends, end_time = get_silences(infile)
 
-            y, sr = librosa.load(inter_file, sr=config["sr"], mono=True)
+            len_starts = len(starts)
+            len_ends = len(ends)
 
-            frame_length = librosa.time_to_samples(config["frame_length_s"], sr=sr)
-            hop_length = librosa.time_to_samples(config["hop_length_s"], sr=sr)
+            assert len_starts == len_ends, "Silence detection did not work correctly because uneven lengths"
 
-            print(frame_length, hop_length)
+            if len_starts == 0: # implicitly == len_ends
+                print("No silence detected - copying as is")
+                shutil.copy2(infile, os.path.join(sentence_dir, file))
+                continue
+            for i in range(len_starts):
 
-            sentences = librosa.effects.split(y, top_db=config["top_db"],
-                                                frame_length=frame_length,
-                                                hop_length=hop_length)
+                outfile = os.path.join(sentence_dir, f"{name}_{i}.{ext}")
+        
+                if i == 0 and starts[0] != 0:
+                    # handles non-silence at beginning of track
+                    ss = 0.0
+                    to = starts[0]
+                elif i+1 == len_starts:
+                    # handles end of track (avoids out-of-range indexing)
+                    ss = ends[i]
+                    to = end_time
+                else:
+                    ss = ends[i]
+                    to = starts[i + 1]
+                    
+                print(i, "|", starts[i], ends[i], "|", ss, to, outfile)
 
-            print(librosa.samples_to_time(sentences, sr=sr))
-
-            # librosa.display.waveshow(y, sr=sr)
-
-            # for start, end in librosa.samples_to_time(sentences, sr=sr):
-            #     plt.axvspan(start, end, color='red', alpha=0.3, label='Interval')  # Shaded bar
-
-            # plt.xlim(70, 90)  
-            # plt.show()
+                cmd = ["ffmpeg", "-hide_banner", "-i", infile, "-ss", str(ss), "-to", str(to), outfile]
+                result = subprocess.run(cmd, capture_output=False)     
 
 
-            mask = (sentences[:,1]-sentences[:,0]) > librosa.time_to_samples(config["min_length_s"], sr=sr)
-            filtered_sentences = sentences[mask]
-            
-            for i, sentence in enumerate(filtered_sentences):
-                outfile = os.path.join(sentence_dir, f"{i}.{config['out_format']}")
+def get_duration(infile):
+    """Command to extract time duration of ffmpeg input file
+    
+    Interestingly this seemed to give a different value than the end_time 
+    obtained in the get_silences() function
 
-                start_time_s = librosa.samples_to_time(sentence[0], sr=sr)
-                end_time_s = librosa.samples_to_time(sentence[1], sr=sr)
-
-               
-                # TODO -> might need the -c copy option if out_format is same as in_format?
-                #         I'm not sure if ffmpeg is smart enough to not reencode 
-                test = (ffmpeg
-                    .input(os.path.join(root, file), ss=start_time_s, to=end_time_s)
-                    .output(outfile, ar=sr)
-                    .overwrite_output()
-                    .run()
-                )         
+    This is because this just uses the metadata, but not the actual 
+    data which is processed when we calculate the silences
+    """
+    cmd = ["ffprobe",
+        "-i", infile,
+        "-show_entries", "format=duration",
+        "-v", "quiet", "-of", "csv=p=0",
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    duration = result.stdout.decode("utf-8").strip()
+    return float(duration)
 
 
 if __name__ == "__main__":
