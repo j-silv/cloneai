@@ -8,10 +8,8 @@ data:
   ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
   audio:
     # in_format: aac (currently not used and is instead inferred from extesnion name)
-    inter_format: wav # when splitting sentences what format are we going to convert to
+    # inter_format: wav # when splitting sentences what format are we going to convert to
     out_format: aac # sentences will be in this final format       
     sr: 44100  
-    top_db: 60 
-    frame_length_s: 0.5
-    hop_length_s: 0.125
-    min_length_s: 1.5 # minimum length in seconds for a sentence
+    silence_threshold_db: 60 
+    silence_duration_s: 1
