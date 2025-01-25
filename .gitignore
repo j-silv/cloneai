@@ -1,5 +1,7 @@
 **/__pycache__
 .venv/
-notes.md
-data/raw/*
-data/processed/*
+data/processed
+data/raw
+data/test
+*code-workspace
+*.md

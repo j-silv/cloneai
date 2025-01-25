@@ -1,17 +1,28 @@
-dir:
-  data:
-    raw: data/raw
-    processed: data/processed
 
 data:
-  merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
-  ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
-  audio:
-    # in_format: aac (currently not used and is instead inferred from extesnion name)
-    inter_format: wav # when splitting sentences what format are we going to convert to
+  extract:
+    enable: 0
+    merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
+    ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
+    clean: False
+    dir:
+      raw: data/raw
+      extracted: data/extracted
+
+
+  split:
+    ignore: ["idontseeit", "tstrip"]
+    progress: True
+    accurate: False
+    enable: 1
+    clean: False
     out_format: aac # sentences will be in this final format       
-    sr: 44100  
-    top_db: 60 
-    frame_length_s: 0.5
-    hop_length_s: 0.125
-    min_length_s: 1.5 # minimum length in seconds for a sentence
+    sample_rate_hz: 44100
+    silence_db: -40
+    min_silence_s: 2
+    min_nonsilence_s: 2
+    dir:
+      processed: data/processed
+      speaker: data/raw/speaker
+  transcribe:
+    enable: 0
