@@ -19,8 +19,8 @@ venv:
 data:
 	$(PYTHON) $(FLAG) $(MODULE).data
 
-stream:
-	$(PYTHON) $(FLAG) $(MODULE).stream
+split:
+	$(PYTHON) $(FLAG) $(MODULE).split
 
 clean_data:
 	rm -rf data/raw/*/
