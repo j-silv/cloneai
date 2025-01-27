@@ -1,4 +1,5 @@
 import io
+import re
 import librosa
 import numpy as np 
 import subprocess
@@ -17,29 +18,40 @@ class FFmpeg:
         sr = result.stdout.strip()
         return sr
 
-    def read_chunk(filename, chunk_size=1024*1024, sr=16000, audio="s16le", verbose=False):
-        with open(filename, "rb") as f:
-            in_buffer = io.BytesIO(f.read(chunk_size))
-        
-        cmd = ["ffmpeg",
-            "-v",
-            "verbose",
-            "-i",
-            "pipe:",
-            "-f",
-            audio, # PCM signed 16-bit little-endian samples
-            "-ac",   # number of channels
-            "1",
-            "-ar",   # sampling rate (Hz)
-            str(sr), 
-            "pipe:"]
-        
-        result = subprocess.run(cmd, capture_output=True, input=in_buffer.getbuffer())
+    def read_chunk(filename, chunk_size_s=5, hop_length_s=1.25, sr=16000, audio="s16le", verbose=False):
+        ss = 0
 
-        if verbose:
-            print(result.stderr.decode("utf-8"))
+        while(1):
+            cmd = ["ffmpeg",
+                "-v",
+                "verbose",
+                "-accurate_seek",
+                "-i",
+                filename,
+                "-ss",
+                str(ss),
+                "-t",
+                str(chunk_size_s),
+                "-f",
+                audio, # PCM signed 16-bit little-endian samples
+                "-ac",   # number of channels
+                "1",
+                "-ar",   # sampling rate (Hz)
+                str(sr), 
+                "pipe:"]
+            
+            result = subprocess.run(cmd, capture_output=True)
+            stdout = result.stderr.decode("utf-8")
 
-        return result.stdout
+            if verbose:
+                print(stdout)
+
+            if re.search("Output file is empty", stdout):
+                break
+
+            yield result.stdout
+
+            ss += hop_length_s
     
     def write(filename, out_buffer, sr=16000, audio="s16le", ss=None, to=None, verbose=False):
         # TODO -> might need the -c copy option if out_format is same as in_format?
@@ -62,11 +74,6 @@ class FFmpeg:
 
         if verbose:
             print(result.stderr.decode("utf-8"))
-    
-
-def write_chunk(filename, in_buffer):
-    with open(filename, "wb") as f:
-        f.write(in_buffer.read())
 
 def matplotlib_plot(arr):
     plt.plot(arr)
@@ -81,35 +88,25 @@ def matplotlib_plot_with_intervals(arr, intervals):
         plt.axvline(x=end, color='green', linestyle='--', label='End Line')
     plt.show()
 
-
-
-
-
 if __name__ == "__main__":
-    in_buffer = FFmpeg.read_chunk("/home/justin/files/test_ffmpeg/in.aac")
+    gen_chunks = FFmpeg.read_chunk("/home/justin/files/test_ffmpeg/in.aac", verbose=True)
 
-    
-    arr = np.frombuffer(in_buffer, dtype="<i2")
-
-    # matplotlib_plot(arr)
-
-    splits_samples = librosa.effects.split(arr, top_db=60, frame_length=2048, hop_length=512)
-    splits_time = librosa.samples_to_time(splits_samples, sr=16000)
-
-    
-
-    min_length = 2
-    mask = (splits_time[:,1]-splits_time[:,0]) > min_length
-    
-
-    splits_time_filtered = splits_time[mask]
-
-    matplotlib_plot_with_intervals(arr, librosa.time_to_samples(splits_time_filtered, sr=16000))
+    for i, chunk in enumerate(gen_chunks):
+        print(f"Processing chunk {i}")
+        arr = np.frombuffer(chunk, dtype="<i2")
+        FFmpeg.write(f"/home/justin/files/test_ffmpeg/arr_{i}.aac", arr.tobytes(), verbose=True)
+        matplotlib_plot(arr)
 
 
-    for i, (split_start, split_end) in enumerate(splits_time_filtered):
-        outfile = f"/home/justin/files/test_ffmpeg/in_split_{i}.aac"
-        FFmpeg.write(outfile, arr.tobytes(), ss=split_start, to=split_end)
+
+    # splits_samples = librosa.effects.split(arr, top_db=60, frame_length=2048, hop_length=512)
+    # splits_time = librosa.samples_to_time(splits_samples, sr=16000)
+    # min_length = 2
+    # mask = (splits_time[:,1]-splits_time[:,0]) > min_length
+    # splits_time_filtered = splits_time[mask]
+    # for i, (split_start, split_end) in enumerate(splits_time_filtered):
+    #     outfile = f"/home/justin/files/test_ffmpeg/in_split_{i}.aac"
+    #     FFmpeg.write(outfile, arr.tobytes(), ss=split_start, to=split_end)
 
 
 
