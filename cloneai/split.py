@@ -28,12 +28,12 @@ class FFmpeg:
                 "-accurate_seek",
                 "-i",
                 filename,
+                "-f",
+                audio, # PCM signed 16-bit little-endian samples
                 "-ss",
                 str(ss),
                 "-t",
                 str(chunk_size_s),
-                "-f",
-                audio, # PCM signed 16-bit little-endian samples
                 "-ac",   # number of channels
                 "1",
                 "-ar",   # sampling rate (Hz)
@@ -89,24 +89,32 @@ def matplotlib_plot_with_intervals(arr, intervals):
     plt.show()
 
 if __name__ == "__main__":
-    gen_chunks = FFmpeg.read_chunk("/home/justin/files/test_ffmpeg/in.aac", verbose=True)
+    chunk_size_s = 5
+    hop_length_s = 1.25
+    gen_chunks = FFmpeg.read_chunk("/home/justin/files/test_ffmpeg/in.aac",
+                                   chunk_size_s=chunk_size_s, hop_length_s=hop_length_s, verbose=False)
 
+
+    concat_times = [] 
+    pos = 0
     for i, chunk in enumerate(gen_chunks):
         print(f"Processing chunk {i}")
         arr = np.frombuffer(chunk, dtype="<i2")
-        FFmpeg.write(f"/home/justin/files/test_ffmpeg/arr_{i}.aac", arr.tobytes(), verbose=True)
-        matplotlib_plot(arr)
+        splits_samples = librosa.effects.split(arr, top_db=60, frame_length=2048, hop_length=512)
+        splits_time = librosa.samples_to_time(splits_samples, sr=16000)
 
+        for (start, end) in splits_time:
+            print(start + pos, end + pos)
+        # print(splits_time)
+        
+        pos += hop_length_s
 
-
-    # splits_samples = librosa.effects.split(arr, top_db=60, frame_length=2048, hop_length=512)
-    # splits_time = librosa.samples_to_time(splits_samples, sr=16000)
-    # min_length = 2
-    # mask = (splits_time[:,1]-splits_time[:,0]) > min_length
-    # splits_time_filtered = splits_time[mask]
-    # for i, (split_start, split_end) in enumerate(splits_time_filtered):
-    #     outfile = f"/home/justin/files/test_ffmpeg/in_split_{i}.aac"
-    #     FFmpeg.write(outfile, arr.tobytes(), ss=split_start, to=split_end)
+        # min_length = 2
+        # mask = (splits_time[:,1]-splits_time[:,0]) > min_length
+        # splits_time_filtered = splits_time[mask]
+        # for i, (split_start, split_end) in enumerate(splits_time_filtered):
+        #     outfile = f"/home/justin/files/test_ffmpeg/in_split_{i}.aac"
+        #     FFmpeg.write(outfile, arr.tobytes(), ss=split_start, to=split_end)
 
 
 
