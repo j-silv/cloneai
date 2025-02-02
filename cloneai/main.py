@@ -40,6 +40,6 @@ if __name__ == "__main__":
 
     params = config["data"]["transcribe"]
     if params["enable"]:
-        transcribe.run()
+        transcribe.run(params["dir"]["speaker"], params["model"], params["ignore"], params["min_confidence"])
 
     # -------------------------------------------------------------------

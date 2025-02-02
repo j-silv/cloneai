@@ -9,7 +9,6 @@ data:
       raw: data/raw
       extracted: data/extracted
 
-
   split:
     ignore: ["idontseeit", "tstrip"]
     progress: True
@@ -24,5 +23,15 @@ data:
     dir:
       processed: data/processed
       speaker: data/raw/speaker
+
+
   transcribe:
     enable: 0
+    model: turbo
+    min_confidence: -0.5 # avglogprob minimum, otherwise discard it
+    ignore: []
+    dir:
+      speaker: /content/drive/MyDrive/cloneai/processed # google collab
+      # speaker: data/raw/speaker # local
+
+    
