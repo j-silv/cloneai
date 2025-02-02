@@ -194,14 +194,15 @@ def matplotlib_plot_with_intervals(arr, intervals):
     plt.show()
 
 if __name__ == "__main__":
-    silences = (FFmpeg.get_silences("/home/justin/files/test_ffmpeg/in.wav", dB=-30, dur=1.5))
-    nonsilences = (FFmpeg.get_nonsilences("/home/justin/files/test_ffmpeg/in.wav", dB=-40, min_silence=1.0, min_nonsilence=1))
+    infile = "/home/justin/files/test_ffmpeg/scott.aac"
+    silences = (FFmpeg.get_silences(infile, dB=-30, dur=1.5))
+    nonsilences = (FFmpeg.get_nonsilences(infile, dB=-30, min_silence=1.0, min_nonsilence=4))
 
-    print(nonsilences)
+    # print(nonsilences)
     for i, (start, end) in enumerate(nonsilences):
         print(i, start, end)
         outfile = f"/home/justin/files/test_ffmpeg/in_split_{i}.wav"
-        FFmpeg.write("/home/justin/files/test_ffmpeg/in.wav", outfile, ss=start, to=end, verbose=False)
+        FFmpeg.write(infile, outfile, ss=start, to=end, verbose=False)
 
 
 
