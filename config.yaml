@@ -16,7 +16,6 @@ data:
     sample_rate_hz: 44100
     silence_db: -40
     min_silence_s: 2
-    nonsilence_db: -40
     min_nonsilence_s: 2
     dir:
       processed: data/processed

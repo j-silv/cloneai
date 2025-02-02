@@ -45,7 +45,7 @@ def get_sample_rate(filename):
     return sr
 
 
-def get_silences(infile, silence_db=-60, min_silence_s=2.0):
+def get_silences(infile, silence_db=-60, min_silence_s=2.0, verbose=False):
     """Use ffmpeg to detect silence regions of audio
     
     This is based on an example using ffmpeg-python located here:
@@ -68,7 +68,9 @@ def get_silences(infile, silence_db=-60, min_silence_s=2.0):
         "null",
         "-"
     ]
-    print(" ".join(cmd))
+
+    if verbose:
+        print(" ".join(cmd))
 
     silence_start_re = re.compile(r' silence_start: (?P<start>[0-9]+(\.?[0-9]*))$')
     silence_end_re = re.compile(r' silence_end: (?P<end>[0-9]+(\.?[0-9]*)) ')
@@ -79,8 +81,11 @@ def get_silences(infile, silence_db=-60, min_silence_s=2.0):
 
     starts = []
     ends = []
+    end_time = float("inf")
 
     for line in lines:
+        if verbose:
+            print(line)
 
         silence_start_match = silence_start_re.search(line)
         silence_end_match = silence_end_re.search(line)
@@ -107,7 +112,7 @@ def get_silences(infile, silence_db=-60, min_silence_s=2.0):
 
 
 
-def convert_silences_to_nonsilences(starts, ends, end_time, nonsilence_db=-60, min_nonsilence=2):
+def convert_silences_to_nonsilences(starts, ends, end_time, min_nonsilence_s=2):
     """Convert all audio files to specific format and split for ML training"""
 
     len_starts = len(starts)
@@ -135,7 +140,7 @@ def convert_silences_to_nonsilences(starts, ends, end_time, nonsilence_db=-60, m
             ss = ends[i]
             to = starts[i + 1]
 
-        if (to - ss) >= min_nonsilence:
+        if (to - ss) >= min_nonsilence_s:
             # print(i, "|", starts[i], ends[i], "|", ss, to)
             splits.append([ss, to])
             
@@ -153,7 +158,10 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
     if ss is not None and to is not None:
         cmd.extend(["-ss", str(ss), "-to", str(to)])
 
-    cmd.extend(["-ar", sample_rate_hz, outfile])
+    if sample_rate_hz is not None:
+        cmd.extend(["-ar", str(sample_rate_hz)])
+        
+    cmd.append(outfile)
 
     result = subprocess.run(cmd, capture_output=True)
 
@@ -162,7 +170,7 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
 
 
 def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
-        silence_db, min_silence_s, nonsilence_db, min_nonsilence_s):
+        silence_db, min_silence_s, min_nonsilence_s):
     
     print("Starting audio splitting into smaller segments")
 
@@ -190,7 +198,7 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
                 shutil.copy2(infile, os.path.join(sentence_dir, file))
                 continue
 
-            nonsilences = convert_silences_to_nonsilences(starts, ends, end_time, nonsilence_db, min_nonsilence_s)
+            nonsilences = convert_silences_to_nonsilences(starts, ends, end_time, min_nonsilence_s)
 
             for i, (start, end) in enumerate(nonsilences):
                 outfile = os.path.join(sentence_dir, f"{name}_{i}.{out_format}")

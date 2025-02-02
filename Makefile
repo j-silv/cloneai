@@ -25,7 +25,7 @@ transcribe:
 	$(PYTHON) $(FLAG) $(MODULE).data.$@
 
 test:
-	$(PYTHON) $(FLAG) $(MODULE).data.$@
+	$(PYTHON) $(FLAG) $(MODULE).$@
 
 clean_raw:
 	rm -rf data/raw/*/
