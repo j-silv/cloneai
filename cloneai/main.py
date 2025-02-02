@@ -1,8 +1,8 @@
 import os
 import yaml
-import data.extract as extract
-import data.split as split
-import data.transcribe as transcribe
+import cloneai.data.extract as extract
+import cloneai.data.split as split
+import cloneai.data.transcribe as transcribe
 
 def load_config(filename):
     with open(filename, 'r') as file:
@@ -32,7 +32,7 @@ if __name__ == "__main__":
         split.run(speaker_dir, processed_dir,
                   params["out_format"],  params["sample_rate_hz"],
                   params["silence_db"], params["min_silence_s"],
-                  params["nonsilence_db"], params["min_nonsilence_s"])
+                  params["min_nonsilence_s"], clean=params["clean"], progress=params["progress"])
 
 
     # -------------------------------------------------------------------

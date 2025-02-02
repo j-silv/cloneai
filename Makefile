@@ -15,6 +15,9 @@ venv:
 	$(SYSTEM_PYTHON) -m $@ $(VENV)
 	$(VENV_PYTHON) -m pip install -r requirements.txt
 
+main:
+	$(PYTHON) $(FLAG) $(MODULE).$@
+
 extract:
 	$(PYTHON) $(FLAG) $(MODULE).data.$@
 

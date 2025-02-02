@@ -11,7 +11,9 @@ data:
 
 
   split:
-    enable: 0
+    progress: True
+    enable: 1
+    clean: False
     out_format: aac # sentences will be in this final format       
     sample_rate_hz: 44100
     silence_db: -40
@@ -19,6 +21,6 @@ data:
     min_nonsilence_s: 2
     dir:
       processed: data/processed
-      speaker: data/processed/speaker
+      speaker: data/raw/speaker
   transcribe:
     enable: 0

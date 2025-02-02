@@ -160,7 +160,7 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
 
     if sample_rate_hz is not None:
         cmd.extend(["-ar", str(sample_rate_hz)])
-        
+
     cmd.append(outfile)
 
     result = subprocess.run(cmd, capture_output=True)
@@ -170,7 +170,7 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
 
 
 def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
-        silence_db, min_silence_s, min_nonsilence_s):
+        silence_db, min_silence_s, min_nonsilence_s, clean=False, progress=False):
     
     print("Starting audio splitting into smaller segments")
 
@@ -201,10 +201,17 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
             nonsilences = convert_silences_to_nonsilences(starts, ends, end_time, min_nonsilence_s)
 
             for i, (start, end) in enumerate(nonsilences):
+                if progress:
+                    print("\r\033[k",end="")
+                    print(f"Time (s) == {int(start)}/{int(end_time)}", end="", flush=True)
+
                 outfile = os.path.join(sentence_dir, f"{name}_{i}.{out_format}")
                 write(infile, outfile, ss=start, to=end, verbose=False, sample_rate_hz=sample_rate_hz)
  
+            print("")
 
+            if clean is True:
+                os.remove(infile)
 
 
 
