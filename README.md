@@ -9,14 +9,6 @@ This is a program which can digitally "clone" you or your friends voice and pers
 3. Response tweaked with personality
 4. Text to speech
 
-# Other possibles names
-
-- CloneAI
-- CloneBot
-- CloneBotAI
-- AIme
-- AIandMe
-
 
 # How to run
 

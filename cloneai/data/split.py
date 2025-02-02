@@ -1,3 +1,13 @@
+"""
+- Convert all audio to the same format and sampling rate (might need to batch use raw.dat or re-sample)
+- Break up audio into short sentence phrases
+    - cut audio whenever there is a gap of more than couple of seconds
+- For consistency into whisper and training make sure audio files:
+    - Are in WAV format (not necessary, can be flac as well)
+    - Have a sample rate of 16kHz (this should be done)
+    - Are mono-channel (this should also be done)
+"""
+
 import io
 import re
 import librosa
@@ -193,7 +203,14 @@ def matplotlib_plot_with_intervals(arr, intervals):
         plt.axvline(x=end, color='green', linestyle='--', label='End Line')
     plt.show()
 
-if __name__ == "__main__":
+
+def run(speaker_dir, processed_dir, audio, silence_dB, nonsilence_dB, min_silence, min_nonsilence):
+    
+    print("Starting audio preprocessing")
+    process_audio(os.path.join(speaker_dir, "2-scott"), processed_dir, config["data"]["audio"])
+    shutil.rmtree(os.path.join(processed_dir, "processed"), ignore_errors=True)
+    process_audio(processed_dir, processed_dir, config["data"]["audio"])
+
     infile = "/home/justin/files/test_ffmpeg/scott.aac"
     silences = (FFmpeg.get_silences(infile, dB=-30, dur=1.5))
     nonsilences = (FFmpeg.get_nonsilences(infile, dB=-30, min_silence=1.0, min_nonsilence=4))

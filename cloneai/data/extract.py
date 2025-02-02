@@ -1,38 +1,23 @@
 """
 Unzip and prepare raw data that is collected from Craig recordings
 
-These folders were auto uploaded to my Google Drive account and now I will
-proceed to unzip them and create data that is ready to be processed
+These folders were auto uploaded to my Google Drive account, and now
+this script proceeds to unzip them and create data that is ready to be processed
 by the ML models
 
 - Unzip everything from raw data location
 - Create destination folders for speaker1, speaker2, speaker3 in data/processed folder
 - Determine speaker unique IDs by iterating through every folder and hashing them as names
 - Separate tracks into the respective folders (map speaker names to processed folder) -> only process individual tracks
-- Delete recordings under a certain size/size
+- Delete recordings under a certain file size
 - Delete recordings with a single speaker
-- Convert all audio to the same format and sampling rate (might need to batch use raw.dat or re-sample)
-- Break up audio into short sentence phrases
-    - cut audio whenever there is a gap of more than couple of seconds? pause in dialog? look at algorithms for this
-    - pydub is apparently one library to do this. Let's see if there is any sort of low-level usage with ffmpeg? silence.split_on_silence()
-    - https://stackoverflow.com/questions/45526996/split-audio-files-using-silence-detection
--For consistency into whisper and training make sure audio files:
-    - Are in WAV format (not necessary, can be flac as well)
-    - Have a sample rate of 16kHz (this should be done)
-    - Are mono-channel (this should also be done)
 """
 
 import zipfile
-import yaml
 import os
 import glob
 import re
 import shutil
-import librosa
-import subprocess
-import ffmpeg
-import matplotlib.pyplot as plt
-import soundfile as sf
 
 def extract_zips(in_dir, out_dir, nested=False, clean=False):
     """Extract zip files from in_dir to out_dir
@@ -52,7 +37,8 @@ def extract_zips(in_dir, out_dir, nested=False, clean=False):
     extraction_num = 0 
     zip_files = glob.glob(f"{in_dir}/*.zip")
 
-    # zip_files = zip_files[2:4] # for debugging
+    # for debugging, just use a few zip files instead of the whole directory 
+    # zip_files = zip_files[2:4] 
 
     with open(os.path.join(out_dir, f"extract_{nested}_{clean}.log"), "w") as log:
         for file in zip_files:
@@ -147,31 +133,24 @@ def group_tracks(in_dir, out_dir, merge, ignore, clean=False):
     return speaker
 
 
-if __name__ == "__main__":
-    ROOT = os.getcwd()
 
-    with open('config.yaml', 'r') as file:
-        config = yaml.safe_load(file)
-    raw_dir = os.path.join(ROOT, config["dir"]["data"]["raw"])
-    processed_dir = os.path.join(ROOT, config["dir"]["data"]["processed"])
-    out_dir = os.path.join(raw_dir, "extracted")
-    
+def run(raw_dir, out_dir, merge, ignore, clean):
+    """
+        Params:
+            in_dir  : root folder with extracted audio files
+            out_dir : output directory
+            merge   : list of speaker names to merge into one
+            ignore  : list of speakers to ignore
+            clean   : delete extracted audio file folders as we group
+    """
+
     print("Extracting audio data archives... this might take a while")
 
-    # we will call this function twice as we have a nested 
-    # zip archive. the first time will be False and the second time True
-    # extract_zips(raw_dir, out_dir, nested=True, clean=False)
-    # extract_zips(out_dir, out_dir, nested=False, clean=True)
+    # we will call this function twice as we have a nested zip archive
+    # put clean to False the first time because this is the raw audio data
+    extract_zips(raw_dir, out_dir, nested=True, clean=False)
+    extract_zips(out_dir, out_dir, nested=False, clean=clean)
 
     speaker_dir = os.path.join(raw_dir, "speaker")
-    # group_tracks(out_dir, speaker_dir, config["data"]["merge"], config["data"]["ignore"], clean=True)
+    group_tracks(out_dir, speaker_dir, merge, ignore, clean)
     print("Extraction completed")
-
-    print("Starting audio preprocessing")
-    # process_audio(os.path.join(speaker_dir, "2-scott"), processed_dir, config["data"]["audio"])
-
-    shutil.rmtree(os.path.join(processed_dir, "processed"), ignore_errors=True)
-    process_audio(processed_dir, processed_dir, config["data"]["audio"])
-
-
-
