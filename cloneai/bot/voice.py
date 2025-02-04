@@ -34,4 +34,35 @@ async def on_ready():
 async def hello(ctx: discord.ApplicationContext):
     await ctx.respond("Hey!")
 
+
+@bot.slash_command(name="play")
+async def play(ctx: discord.ApplicationContext):
+    # Ensure the user is in a voice channel
+    if ctx.author.voice is None or ctx.author.voice.channel is None:
+        await ctx.respond("You need to be in a voice channel!", ephemeral=True)
+        return
+
+    vc = ctx.voice_client
+
+    if not vc: # We firstly check if there is a voice client
+        vc = await ctx.author.voice.channel.connect() # If there isn't, we connect it to the channel
+
+    # Now we are going to check if the invoker of the command
+    # is in the same voice channel than the voice client, when defined.
+    # If not, we return an error message.
+    if ctx.author.voice.channel.id != vc.channel.id:
+        return await ctx.respond("You must be in the same voice channel as the bot.")
+
+
+    # WAV file to play (replace with your actual file path)
+    audio_source = discord.FFmpegPCMAudio("data/test/in.aac", executable="ffmpeg")
+
+    # Ensure the bot is not already playing something
+    if not vc.is_playing():
+        vc.play(audio_source, after=lambda e: print("Finished playing."))
+        await ctx.respond("Playing your audio!")
+    else:
+        await ctx.respond("Already playing audio!")
+
+
 bot.run(os.getenv('DISCORD_TOKEN'))
