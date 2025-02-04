@@ -1,6 +1,7 @@
 import os
 import discord
 from dotenv import load_dotenv
+import cloneai.tts.tacotron2
 
 load_dotenv()
 
@@ -36,7 +37,7 @@ async def hello(ctx: discord.ApplicationContext):
 
 
 @bot.slash_command(name="play")
-async def play(ctx: discord.ApplicationContext):
+async def play(ctx: discord.ApplicationContext, text: str):
     # Ensure the user is in a voice channel
     if ctx.author.voice is None or ctx.author.voice.channel is None:
         await ctx.respond("You need to be in a voice channel!", ephemeral=True)
@@ -53,9 +54,12 @@ async def play(ctx: discord.ApplicationContext):
     if ctx.author.voice.channel.id != vc.channel.id:
         return await ctx.respond("You must be in the same voice channel as the bot.")
 
+    outfile = "./data/test/tts.wav"
+
+    cloneai.tts.tacotron2.run(text, outfile)
 
     # WAV file to play (replace with your actual file path)
-    audio_source = discord.FFmpegPCMAudio("data/test/in.aac", executable="ffmpeg")
+    audio_source =  discord.FFmpegPCMAudio(outfile, executable="ffmpeg")
 
     # Ensure the bot is not already playing something
     if not vc.is_playing():

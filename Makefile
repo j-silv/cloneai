@@ -30,6 +30,9 @@ transcribe:
 voice:
 	$(PYTHON) $(FLAG) $(MODULE).bot.$@
 
+tts:
+	$(PYTHON) $(FLAG) $(MODULE).$@.tacotron2
+
 test:
 	$(PYTHON) $(FLAG) $(MODULE).$@
 
