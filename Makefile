@@ -27,6 +27,9 @@ split:
 transcribe:
 	$(PYTHON) $(FLAG) $(MODULE).data.$@
 
+voice:
+	$(PYTHON) $(FLAG) $(MODULE).bot.$@
+
 test:
 	$(PYTHON) $(FLAG) $(MODULE).$@
 

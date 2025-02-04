@@ -5,3 +5,4 @@ data/raw
 data/test
 *code-workspace
 *.md
+.env

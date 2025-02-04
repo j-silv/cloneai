@@ -9,6 +9,16 @@ This is a program which can digitally "clone" you or your friends voice and pers
 3. Response tweaked with personality
 4. Text to speech
 
+# Prerequisites
+
+For Discord code, [follow this guide](https://discordpy.readthedocs.io/en/stable/intro.html)
+
+For the other dependencies, look at `requirements.txt`.
+
+You'll also need to setup a Discord bot to run the voice synthesis. Follow [this guide](https://realpython.com/how-to-make-a-discord-bot-python/#what-is-a-bot)
+
+[OAuth2 link](https://discord.com/oauth2/authorize?client_id=1336203698027761735&permissions=39584602852608&integration_type=0&scope=bot)
+
 
 # How to run
 
