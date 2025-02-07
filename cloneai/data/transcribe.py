@@ -38,34 +38,38 @@ def run(speaker_dir, model, ignore=[], min_confidence=-0.5):
   model = whisper.load_model(model)
 
   for root, file_dir, files in os.walk(speaker_dir):
-      if len(files) == 0 or os.path.basename(root) == "transcription":
+      if len(files) == 0:
           # because we are at the directory not the sub-directory level
           continue
- 
+
       name = re.match(r"\d+-(\D+)_?(\d+)?", os.path.basename(root))
       name = name.group(1)
-      name = re.sub(r"_", r"", name) 
+      name = re.sub(r"_", r"", name)
 
       if name in ignore:
           continue
 
-      transcription_dir = os.path.join(root, "transcription")
-      shutil.rmtree(transcription_dir, ignore_errors=True)
-      os.makedirs(transcription_dir)
+      with open(os.path.join(root, f"transcriptions.txt"), "w") as f:
 
-      for idx, file in enumerate(files):
-          print("Processing", file)
-          name = re.match(r"(\w+)\.", file).group(1)
-          ext = re.search(r"\w+$", file).group(0)
-          infile = os.path.join(root, file)
+        for idx, filename in enumerate(files):
+            if filename == "transcriptions.txt":
+              continue
+            print("Processing", f"{filename:<15}", end="")
+            name = re.match(r"(\w+)\.", filename).group(1)
+            ext = re.search(r"\w+$", filename).group(0)
+            infile = os.path.join(root, filename)
 
-          result = run_whisper(model, infile)
-          avg_logprob = result.avg_logprob
-          text = result.text
+            result = run_whisper(model, infile)
+            avg_logprob = result.avg_logprob
+            text = result.text
 
-          if avg_logprob > min_confidence:
-            with open(os.path.join(transcription_dir, f"{name}.txt"), "w") as f:
-              print(result.text, file=f)
+            print(f" {avg_logprob=:.5f} | {text=}")
+
+            if avg_logprob > min_confidence:
+                print(f"{filename}|{text}", file=f)
+
+            if idx > 10:
+              break 
 
 def run_whisper(model, filename):
   # load audio and pad/trim it to fit 30 seconds
@@ -82,6 +86,9 @@ def run_whisper(model, filename):
   # print the recognized text
   return result
 
+
+if __name__ == "__main__":
+   run("./speakers", "turbo")
 
 
 
