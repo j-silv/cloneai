@@ -10,18 +10,18 @@ Runs on Google Collab sheet. Make sure that the following commands are ran:
 !sudo apt update && sudo apt install ffmpeg
 
 """
-from google.colab import drive
-drive.mount('/content/drive')
+# from google.colab import drive
+# drive.mount('/content/drive')
 
 import os
 import numpy as np
 import re
 import shutil
 
-try:
-    import tensorflow  # required in Colab to avoid protobuf compatibility issues
-except ImportError:
-    pass
+# try:
+#     import tensorflow  # required in Colab to avoid protobuf compatibility issues
+# except ImportError:
+#     pass
 
 import torch
 import pandas as pd

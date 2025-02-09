@@ -1,8 +1,7 @@
 **/__pycache__
-.venv/
-data/processed
-data/raw
-data/test
+venv/
+data/
+*.pt
 *code-workspace
 *.md
 .env

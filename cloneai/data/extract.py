@@ -40,8 +40,8 @@ def extract_zips(in_dir, out_dir, nested=False, clean=False):
     # for debugging, just use a few zip files instead of the whole directory 
     # zip_files = zip_files[2:4] 
 
-    with open(os.path.join(out_dir, f"extract_{nested}_{clean}.log"), "w") as log:
-        for file in zip_files:
+    for file in zip_files:
+        with open(os.path.join(out_dir, f"extract_{nested}_{clean}_{os.path.basename(file)}.log"), "w") as log:
             with zipfile.ZipFile(file, "r") as zip_ref:
                 if nested is False:
                     extraction_num += 1
@@ -49,18 +49,16 @@ def extract_zips(in_dir, out_dir, nested=False, clean=False):
                     os.makedirs(wrap_dir, exist_ok=True)
                     print(f"Extract #{extraction_num}: {zip_ref.filename}", file=log, flush=True)
                     zip_ref.extractall(wrap_dir)
-                else: 
+                else:
                     for member in zip_ref.infolist():
                         extraction_num += 1
-                        data = zip_ref.read(member)
-                        out_file = os.path.join(out_dir, os.path.basename(member.filename))
-                        with open(out_file, 'wb') as target:
-                            print(f"Extract #{extraction_num}: {member.filename} ---> {out_file}", file=log, flush=True)
-                            target.write(data)
+                        out_file = os.path.join(out_dir, member.filename)
+                        print(f"Extract #{extraction_num}: {member.filename} ---> {out_file}", file=log, flush=True)
+                    zip_ref.extractall(out_dir)
             if clean is True:
                 os.remove(file)
 
-        print("\nNumber of extractions:", extraction_num, file=log, flush=True)
+            print("\nNumber of extractions:", extraction_num, file=log, flush=True)
     return extraction_num
 
 def group_tracks(in_dir, out_dir, merge, ignore, clean=False):
@@ -134,7 +132,7 @@ def group_tracks(in_dir, out_dir, merge, ignore, clean=False):
 
 
 
-def run(raw_dir, out_dir, merge, ignore, clean):
+def run(raw_dir, out_dir, merge, ignore, clean, zip_relpath):
     """
         Params:
             in_dir  : root folder with extracted audio files
@@ -146,9 +144,13 @@ def run(raw_dir, out_dir, merge, ignore, clean):
 
     print("Extracting audio data archives... this might take a while")
 
-    # we will call this function twice as we have a nested zip archive
+    # we will call this function thrice as we have a nested zip archive
     # put clean to False the first time because this is the raw audio data
     extract_zips(raw_dir, out_dir, nested=True, clean=False)
+    extract_zips(out_dir, out_dir, nested=True, clean=clean)
+
+    # because we might have a wrapper around each zip file
+    out_dir = os.path.join(out_dir, zip_relpath)
     extract_zips(out_dir, out_dir, nested=False, clean=clean)
 
     speaker_dir = os.path.join(raw_dir, "speaker")

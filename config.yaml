@@ -1,19 +1,20 @@
 
 data:
   extract:
-    enable: 0
+    enable: 1
     merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
     ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
-    clean: False
+    clean: True
     dir:
       raw: data/raw
       extracted: data/extracted
+      zip_relpath: Craig
 
   split:
     ignore: ["idontseeit", "tstrip"]
     progress: True
     accurate: False
-    enable: 1
+    enable: 0
     clean: False
     out_format: aac # sentences will be in this final format       
     sample_rate_hz: 44100

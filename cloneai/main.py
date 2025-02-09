@@ -19,9 +19,10 @@ if __name__ == "__main__":
     params = config["data"]["extract"]
     raw_dir = os.path.join(ROOT, params["dir"]["raw"])
     extracted_dir = os.path.join(ROOT, params["dir"]["extracted"])
+    zip_relpath = params["dir"]["zip_relpath"]
     if params["enable"]:
         extract.run(raw_dir, extracted_dir,
-                    params["merge"], params["ignore"], params["clean"])
+                    params["merge"], params["ignore"], params["clean"], zip_relpath)
 
     # -------------------------------------------------------------------
 

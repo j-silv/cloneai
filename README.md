@@ -4,42 +4,131 @@ This is a program which can digitally "clone" you or your friends voice and pers
 
 # Pipeline
 
-1. Speech to text 
+1. Speech to text
 2. Text to response
 3. Response tweaked with personality
 4. Text to speech
 
-# Prerequisites
+# Text to speech (TTS)
 
-For Discord code, [follow this guide](https://discordpy.readthedocs.io/en/stable/intro.html)
+I decided to start backwards from the pipeline and have a TTS engine which is fine-tuned on pre-recorded audio from a single speaker. This would be a fun little program which runs as a Discord bot and lets you and your friends generate speech from text by sending slash commands.
 
-For the other dependencies, look at `requirements.txt`.
+## Pre-requisites
 
-You'll also need to setup a Discord bot to run the voice synthesis. Follow [this guide](https://realpython.com/how-to-make-a-discord-bot-python/#what-is-a-bot)
+To handle fine-tuning the TTS models and for quickly processing each audio file, I created a Google Compute VM instance with an added T4 GPU. This is not strictly necessary, but the audio processing and the model training will be significantly slower if you do it on a CPU-only machine.
 
-[OAuth2 link](https://discord.com/oauth2/authorize?client_id=1336203698027761735&permissions=39584602852608&integration_type=0&scope=bot)
+### Create a Google Compute VM
 
+Going to the Google Cloud console, we can select a standard VM with GPU support. Here are the specs that I chose:
 
-# How to run
+- n1-standard-4 (4 vCPU, 2 core, 15 GB memory)
+- 1 NVIDIA T4 GPU
+- 200 GBs storage (for holding all audio data, libraries, and model checkpoints)
+- spot provision (way cheaper, and the VM doesn't need to run continuously)
+- Debian 11 Deep Learning VM disk image with Python 3.10 and Cuda 11.8 preinstalled
 
-The `data.py` script processes Craig audio data (multi-track audio recorded from a Discord bot) and gathers the audio files into separate folders within the `data/raw` directory. You can modify the `config.yaml` to change the directory naming convention of the raw data directories.
+### Accessing VM
 
-## 0. Set up environment
-
-I am using `venv` and installing the project specific dependencies into that.
+I found the easiest way to connect is to first run the `gcloud ssh` command which you can find by going to your VM instances in the Google Compute Engine console and clicking on SSH gcloud command line:
 
 ```
-python3 -m venv .venv
-source .venv/bin/activate
+gcloud compute ssh --zone "YOUR_ZONE" "VM_INSTANCE_NAME" --project "YOUR_PROJECT_NAME"
 ```
-This is optional however if you want to install the packages system-wide through pip. The Makefile will check whether or not a `.venv` exists in the root directory, so you don't need to manually activate everytime.
 
-## 1. Download audio data
+On subsequent connections, you can then use basic SSH to connect to the machine's external IP.
 
-To do this, I went to Google Drive and downloaded the Craig folder into multiple zip files to the data/raw directory.
+```
+ssh VM_IP
+```
 
-I then used a shell script to unzip everything into a single folder.
+You can also install the Remote SSH connection for VScode to acces the VM through the external IP. If you do use this flow, I went ahead and installed the VS code Python extension directly on the remote machine.
 
-# References
 
-- [Stanford Speech Language Processing textbook](https://web.stanford.edu/~jurafsky/slp3/ed3bookaug20_2024.pdf)
+### Setting up SSH keys for GitHub
+
+To access my GitHub repo, I set up SSH keys on the VM by generating an SSH keypair and adding it to my GitHub profile.
+
+```
+ssh-keygen -t ed25519 -C "YOUR_EMAIL"
+```
+
+### Setting up VM environment
+
+First step is to clone this GitHub repository. In my home directory, I ran the following command. Note that the submodules flag is required since we are using NVidia's tacotron2 and waveglow implementations and fine-tuning them.
+
+```
+git clone --recurse-submodules git@github.com:j-silv/cloneai.git
+```
+
+Next we need to install the required Python modules and libraries. There are slightly different requirements depending on if you are running on a CPU-only machine or a GPU machine. The following instructions are for GPU machines.
+
+I created everything in a separate `venv` within this repository's root folder.
+
+```
+cd cloneai
+python -m venv venv
+source ./venv/bin/activate
+```
+
+#### GPU requirements
+
+- PyTorch (Cuda 11.8) (`torchaudio` needed so we can download weights for pretrained model)
+    - `pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118`
+- cloneai pip requirements
+    - Discord library, YAML parser, Pandas, and Whisper for transcription
+    - `pip install "py-cord[voice]" PyYAML openai-whisper pandas`
+- Install requirements for Nvidia's tacotron2 implementation
+    - Note that we can't directly install the `requirements.txt` due to an incompatibility with the latest `tensorflow` package. So just manually install them:
+    - `pip install matplotlib tensorflow numpy librosa scipy pillow`
+    - The requirement that the `apex` library be installed is only if you want to run with `fp16` precision. In my case, I ignored this installation.
+- Install requirements for waveglow
+    - Although there also is a `requirements.txt`, I think the previous installations cover this, so you can ignore this installation
+- ffmpeg to process audio files
+    - `sudo apt update && sudo apt install ffmpeg`
+
+#### Download checkpoints for fine-tuning
+
+To have a starting point for adjusting the tacotron2 and waveglow model, I instantiated the models from PyTorch's documentation and saved it to a `state_dict` within the projects main directory.
+
+You can run the following command to do this:
+
+```
+make get_weights
+```
+
+#### Download raw audio data
+
+These are nested zipped directories directly from Google Drive and generated by a Discord bot called Craig. This is a manual step to download them to the VM. I used `scp` to copy from my computer. While on your remote machine:
+
+```
+mkdir -p data/raw
+```
+
+And while on your local machine:
+
+```
+cd PATH_TO_ZIPPED_FILES
+zip ./audio_data.zip ./Craig-*.zip
+scp ./audio_data.zip YOURNAME@VM_IP:~/cloneai/data/raw
+```
+
+You can clean up the individual zip files after you copy it over:
+
+```
+rm -f ./Craig-*.zip
+```
+
+
+
+## How to run - text to speech
+
+Starting from scratch, you are going to need lots of single track audio for the particular speaker you want to clone. In my case, this was hours of audio recorded through Discord with the Craig bot which were saved to my Google Drive. My raw data was thus multiple zip files from Google Drive which contained nested zip files each with a recording that has multiple tracks.
+
+So the first step is this to unzip all of these directories and create a single directory for each speaker which holds all the raw audio. We also need to convert these audio files into a standardized format for subsequent model training.
+
+
+### Prepare data
+
+TBD
+
+

@@ -1,4 +1,4 @@
-VENV           = .venv
+VENV           = venv
 VENV_PYTHON    = $(VENV)/bin/python
 SYSTEM_PYTHON  = $(or $(shell which python3), $(shell which python))
 PYTHON         = $(or $(wildcard $(VENV_PYTHON)), $(SYSTEM_PYTHON))
@@ -14,6 +14,9 @@ venv:
 	rm -rf $(VENV)
 	$(SYSTEM_PYTHON) -m $@ $(VENV)
 	$(VENV_PYTHON) -m pip install -r requirements.txt
+
+get_weights:
+	$(PYTHON) $(FLAG) $(MODULE).$@
 
 main:
 	$(PYTHON) $(FLAG) $(MODULE).$@
@@ -42,5 +45,8 @@ clean_raw:
 
 clean_processed:
 	rm -rf data/processed/*
+
+clean_extracted:
+	rm -rf data/extracted
 
 .PHONY: venv extract split transcribe test clean_raw clean_processed
