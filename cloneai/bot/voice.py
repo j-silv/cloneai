@@ -1,7 +1,7 @@
 import os
 import discord
 from dotenv import load_dotenv
-import cloneai.tts.tacotron2
+import cloneai.tts.pytorch_example_predict
 
 load_dotenv()
 
