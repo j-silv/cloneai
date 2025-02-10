@@ -34,13 +34,14 @@ if __name__ == "__main__":
                   params["out_format"],  params["sample_rate_hz"],
                   params["silence_db"], params["min_silence_s"],
                   params["min_nonsilence_s"], clean=params["clean"], progress=params["progress"],
-                  accurate=params["accurate"], ignore=params["ignore"])
+                  verbose=params["verbose"], accurate=params["accurate"], max_splits=params["max_splits"], ignore=params["ignore"])
 
 
     # -------------------------------------------------------------------
 
     params = config["data"]["transcribe"]
     if params["enable"]:
-        transcribe.run(params["dir"]["speaker"], params["model"], params["ignore"], params["min_confidence"])
+        transcribe.run(params["dir"]["processed"], params["model"], params["verbose"],
+                       params["ignore"], params["min_confidence"], params["del_wav_if_no_transcribe"])
 
     # -------------------------------------------------------------------

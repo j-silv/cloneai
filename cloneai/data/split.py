@@ -157,9 +157,15 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
         if accurate:
             cmd.extend(["-i", infile, "-ss", str(ss), "-to", str(to)])
         else:
-            cmd.extend(["-ss", str(ss), "-to", str(to), "-i", infile, "-c", "copy"])
+            cmd.extend(["-ss", str(ss), "-to", str(to), "-i", infile])
     else:
-        cmd.extend["-i", infile, "-c", "copy"] # if copy is not possible then its fine I think
+        cmd.extend["-i", infile]
+
+    in_format = re.search(r"\w+$", infile).group(0)
+    out_format = re.search(r"\w+$", outfile).group(0)
+
+    if in_format == out_format:
+        cmd.extend["-c", "copy"]
 
     if sample_rate_hz is not None:
         cmd.extend(["-ar", str(sample_rate_hz)])
@@ -177,7 +183,7 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
 
 def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
         silence_db, min_silence_s, min_nonsilence_s,
-        clean=False, progress=False, accurate=True, ignore=[]):
+        clean=False, progress=False, verbose=False, accurate=True, max_splits=500, ignore=[]):
     
     print("Starting audio splitting into smaller segments")
 
@@ -200,7 +206,12 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
         shutil.rmtree(sentence_dir, ignore_errors=True)
         os.makedirs(sentence_dir)
 
+        num_of_files_created = 0
         for file in files:
+
+            if num_of_files_created >= max_splits:
+                break
+            
             print("Processing", file)
             name = re.match(r"(\w+)\.", file).group(1)
             ext = re.search(r"\w+$", file).group(0)
@@ -216,12 +227,17 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
             nonsilences = convert_silences_to_nonsilences(starts, ends, end_time, min_nonsilence_s)
 
             for i, (start, end) in enumerate(nonsilences):
-                if progress:
+                
+                if num_of_files_created >= max_splits:
+                    break
+
+                if progress and not verbose:
                     print("\r\033[k",end="")
                     print(f"Time (s) == {int(start)}/{int(end_time)}", end="", flush=True)
 
                 outfile = os.path.join(sentence_dir, f"{name}_{i}.{out_format}")
-                write(infile, outfile, ss=start, to=end, verbose=False, sample_rate_hz=sample_rate_hz, accurate=accurate)
+                write(infile, outfile, ss=start, to=end, verbose=verbose, sample_rate_hz=sample_rate_hz, accurate=accurate)
+                num_of_files_created += 1
  
             print("")
 

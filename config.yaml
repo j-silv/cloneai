@@ -1,7 +1,7 @@
 
 data:
   extract:
-    enable: 1
+    enable: 0
     merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
     ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
     clean: True
@@ -11,13 +11,15 @@ data:
       zip_relpath: Craig
 
   split:
-    ignore: ["idontseeit", "tstrip"]
+    ignore: []
+    max_splits: 500 # stop after we process more than 500 splits per speaker
     progress: True
+    verbose: False
     accurate: False
     enable: 0
     clean: False
-    out_format: aac # sentences will be in this final format       
-    sample_rate_hz: 44100
+    out_format: wav # sentences will be in this final format       
+    sample_rate_hz: 22050
     silence_db: -40
     min_silence_s: 2
     min_nonsilence_s: 2
@@ -27,12 +29,14 @@ data:
 
 
   transcribe:
-    enable: 0
+    enable: 1
     model: turbo
+    verbose: True
     min_confidence: -0.5 # avglogprob minimum, otherwise discard it
+    del_wav_if_no_transcribe: True
     ignore: []
     dir:
-      speaker: /content/drive/MyDrive/cloneai/processed # google collab
-      # speaker: data/raw/speaker # local
+      # speaker: /content/drive/MyDrive/cloneai/processed # google collab
+      processed: data/processed # local
 
     
