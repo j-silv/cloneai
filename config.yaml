@@ -11,15 +11,16 @@ data:
       zip_relpath: Craig
 
   split:
+    enable: 0
     ignore: []
     max_splits: 500 # stop after we process more than 500 splits per speaker
     progress: True
     verbose: False
     accurate: False
-    enable: 0
     clean: False
     out_format: wav # sentences will be in this final format       
     sample_rate_hz: 22050
+    num_channels: 1 # mono
     silence_db: -40
     min_silence_s: 2
     min_nonsilence_s: 2
@@ -29,7 +30,7 @@ data:
 
 
   transcribe:
-    enable: 1
+    enable: 0
     model: turbo
     verbose: True
     min_confidence: -0.5 # avglogprob minimum, otherwise discard it
@@ -39,4 +40,20 @@ data:
       # speaker: /content/drive/MyDrive/cloneai/processed # google collab
       processed: data/processed # local
 
+model:
+  tacotron2:
+    test_split: 0.5
+    enable: 1
+    dir:
+      processed: data/processed/2-scott
+    args:
+      n_gpus: 1,
+      output_dir: "./outdir"
+      log_dir: "./logdir"
+      checkpoint_path: "./state_dict_tacotron2.pt"
+      rank: 0
+      warm_start: True
+      group_name: "group_name"
+
+    
     

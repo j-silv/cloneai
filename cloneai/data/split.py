@@ -147,7 +147,7 @@ def convert_silences_to_nonsilences(starts, ends, end_time, min_nonsilence_s=2):
     return splits
 
 
-def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100, accurate=False):
+def write(infile, outfile, num_channels=1, ss=None, to=None, verbose=False, sample_rate_hz=44100, accurate=False):
     cmd = ["ffmpeg",
         "-v",
         "verbose",
@@ -159,7 +159,7 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
         else:
             cmd.extend(["-ss", str(ss), "-to", str(to), "-i", infile])
     else:
-        cmd.extend["-i", infile]
+        cmd.extend["-i", infile, "-ac", str(num_channels)]
 
     in_format = re.search(r"\w+$", infile).group(0)
     out_format = re.search(r"\w+$", outfile).group(0)
@@ -183,7 +183,7 @@ def write(infile, outfile, ss=None, to=None, verbose=False, sample_rate_hz=44100
 
 def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
         silence_db, min_silence_s, min_nonsilence_s,
-        clean=False, progress=False, verbose=False, accurate=True, max_splits=500, ignore=[]):
+        clean=False, progress=False, num_channels=1, verbose=False, accurate=True, max_splits=500, ignore=[]):
     
     print("Starting audio splitting into smaller segments")
 
@@ -236,7 +236,7 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
                     print(f"Time (s) == {int(start)}/{int(end_time)}", end="", flush=True)
 
                 outfile = os.path.join(sentence_dir, f"{name}_{i}.{out_format}")
-                write(infile, outfile, ss=start, to=end, verbose=verbose, sample_rate_hz=sample_rate_hz, accurate=accurate)
+                write(infile, outfile, num_channels=num_channels, ss=start, to=end, verbose=verbose, sample_rate_hz=sample_rate_hz, accurate=accurate)
                 num_of_files_created += 1
  
             print("")
