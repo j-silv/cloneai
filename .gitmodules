@@ -1,3 +1,0 @@
-[submodule "cloneai/tts/tacotron2"]
-	path = cloneai/tts/tacotron2
-	url = git@github.com:j-silv/tacotron2.git

@@ -6,3 +6,4 @@ data/
 *.md
 .env
 outdir
+models

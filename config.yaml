@@ -44,13 +44,14 @@ model:
   tacotron2:
     test_split: 0.5
     enable: 1
+    batch_size: 8
     dir:
       processed: data/processed/2-scott
     args:
       n_gpus: 1,
       output_dir: "./outdir"
       log_dir: "./logdir"
-      checkpoint_path: "./state_dict_tacotron2.pt"
+      checkpoint_path: "./nvidia_tacotron2pyt_fp16.pt"
       rank: 0
       warm_start: True
       group_name: "group_name"

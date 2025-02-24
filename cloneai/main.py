@@ -81,16 +81,16 @@ if __name__ == "__main__":
         training_path = training
         validation_path = validation
         
-        override_hparams = f"training_files={training_path},validation_files={validation_path},batch_size=16"
+        override_hparams = f"training_files={training_path},validation_files={validation_path},batch_size={params['batch_size']}"
         hparams = create_hparams(override_hparams)
         
         torch.backends.cudnn.enabled = hparams.cudnn_enabled
         torch.backends.cudnn.benchmark = hparams.cudnn_benchmark
         
         args = params["args"]
-        train(args["output_dir"], args["log_dir"], None,
-          False, args["n_gpus"], args["rank"], args["group_name"], hparams)
-        # train(args["output_dir"], args["log_dir"], args["checkpoint_path"],
-        #   args["warm_start"], args["n_gpus"], args["rank"], args["group_name"], hparams)
+        # train(args["output_dir"], args["log_dir"], None,
+        #   False, args["n_gpus"], args["rank"], args["group_name"], hparams)
+        train(args["output_dir"], args["log_dir"], args["checkpoint_path"],
+          args["warm_start"], args["n_gpus"], args["rank"], args["group_name"], hparams)
 
     # -------------------------------------------------------------------
