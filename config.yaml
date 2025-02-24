@@ -25,9 +25,8 @@ data:
     min_silence_s: 2
     min_nonsilence_s: 2
     dir:
-      processed: data/processed
       speaker: data/raw/speaker
-
+      processed: data/processed
 
   transcribe:
     enable: 0
@@ -38,23 +37,18 @@ data:
     ignore: []
     dir:
       # speaker: /content/drive/MyDrive/cloneai/processed # google collab
-      processed: data/processed # local
+      in: data/processed # local
 
-model:
+tts:
   tacotron2:
-    test_split: 0.5
-    enable: 1
-    batch_size: 8
-    dir:
-      processed: data/processed/2-scott
-    args:
-      n_gpus: 1,
-      output_dir: "./outdir"
-      log_dir: "./logdir"
-      checkpoint_path: "./nvidia_tacotron2pyt_fp16.pt"
-      rank: 0
-      warm_start: True
-      group_name: "group_name"
+    train:
+      enable: 1
+      test_split: 0.5
+      batch_size: 64
+      dir:
+        in: data/processed/2-scott
+
+
 
     
     
