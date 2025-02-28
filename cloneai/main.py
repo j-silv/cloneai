@@ -49,6 +49,6 @@ if __name__ == "__main__":
     
     params = config["tts"]["tacotron2"]["train"]
     if params["enable"]:
-        tacotron2_train.run(params["dir"]["in"])
+        tacotron2_train.run(params["dir"]["in"], params["sample_rate_hz"], params["sample_length"])
         
     # -------------------------------------------------------------------

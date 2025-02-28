@@ -10,21 +10,60 @@ and saving them to a data directory (pickled?)
 import librosa
 import re
 import os 
+import torch
+import whisper
 
-def run(indir):
+
+def log_mel_spectogram(audio, n_fft, hop_length, win_length, sampling_rate_hz, n_mels):
+    window = torch.hann_window(win_length)
+    stft = torch.stft(audio, n_fft, hop_length, window=window, return_complex=True)
+    magnitudes = stft[..., :-1].abs() ** 2
+
+    mel_filters = librosa.filters.mel(sr=sampling_rate_hz, n_fft=n_fft, n_mels=n_mels),
+    mel_spec = mel_filters @ magnitudes
+
+    log_spec = torch.clamp(mel_spec, min=1e-10).log10()
+    log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+    log_spec = (log_spec + 4.0) / 4.0
     
-    for root, file_dir, files in os.walk(indir):
-        if len(files) == 0:
-            # because we are at the directory not the sub-directory level
-            continue
+    return log_spec
+    
+    
 
-        name = re.match(r"\d+-(\D+)_?(\d+)?", os.path.basename(root))
-        name = name.group(1)
+def run(indir, sample_rate_hz, pad_sample_length, n_fft, hop_length, win_length, n_mels):
+    
+    re_transcription = re.compile(r"(.*)\|(.*)")
+    
+    with open(os.path.join(indir, f"transcriptions.txt"), "r") as f:
+        lines = f.readlines()
+        
+    num_audio_files = len(lines)
+    
+    # we will have each audio sample with length: pad_sample_length
+    # we will have a window length of win_length
+    # so it's roughly pad_sample_length / win_length
+    n_frames = pad_sample_length/hop_length
+    
+    mels = torch.tensor(num_audio_files, n_mels, n_frames)
+    
+    for line in lines:
+        re_result = re_transcription.match(line)
+        filename = os.path.join(indir, re_result.group(1))
+        text = re_result.group(2)
+        
+        audio = whisper.load_audio(filename, sample_rate_hz)
+        audio = whisper.pad_or_trim(audio, length=pad_sample_length)
+        
+        
+        # mel = whisper.log_mel_spectrogram(audio, n_mels=80)
+        mel = log_mel_spectogram()
+        
+        # calculate what mel should be so we can specify the n_frames
+        
+        
+        print(mel.shape)
+        
 
-        with open(os.path.join(root, f"transcriptions.txt"), "r") as f:
-            for line in f:
-                print(line)
-                
                 
                 
                 

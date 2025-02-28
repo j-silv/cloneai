@@ -43,6 +43,8 @@ tts:
   tacotron2:
     train:
       enable: 1
+      sample_rate_hz: 16000
+      sample_length: 480000
       test_split: 0.5
       batch_size: 64
       dir:
