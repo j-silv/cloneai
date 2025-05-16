@@ -1,6 +1,8 @@
 **/__pycache__
+.venv/
 venv/
-data/
+data/*
+!data/raw-small.zip
 *.pt
 *code-workspace
 *.md
@@ -8,3 +10,5 @@ data/
 outdir
 models
 .vscode
+docs/
+
