@@ -54,22 +54,13 @@ ssh-keygen -t ed25519 -C "YOUR_EMAIL"
 
 ### Setting up VM environment
 
-First step is to clone this GitHub repository. In my home directory, I ran the following command. Note that the submodules flag is required since we are using NVidia's tacotron2 and waveglow implementations and fine-tuning them.
-
-A note on the sub-module used here:
-
-To support TensorFlow 2.0, I have used a small fork from user abalanonline instead of the main NVidia tacotron2 which removes some depreciated code.
-
-```
-git submodule add git@github.com:abalanonline/tacotron2.git cloneai/tts/tacotron2
-git submodule update --init --recursive
-```
+First step is to clone this GitHub repository. In my home directory, I ran the following command. Note that the submodules flag is required since we are using Andrew Gibiansky's WaveRNN implementation.
 
 ```
 git clone --recurse-submodules git@github.com:j-silv/cloneai.git
 ```
 
-Next we need to install the required Python modules and libraries. There are slightly different requirements depending on if you are running on a CPU-only machine or a GPU machine. The following instructions are for GPU machines.
+Next we need to install the required Python modules and libraries.
 
 I created everything in a separate `venv` within this repository's root folder.
 
@@ -79,21 +70,25 @@ python -m venv venv
 source ./venv/bin/activate
 ```
 
-#### GPU requirements
+#### Requirements
 
 - PyTorch (Cuda 11.8) (`torchaudio` needed so we can download weights for pretrained model)
-    - `pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118`
 - cloneai pip requirements
     - Discord library, YAML parser, Pandas, and Whisper for transcription
-    - `pip install "py-cord[voice]" PyYAML openai-whisper pandas`
-- Install requirements for Nvidia's tacotron2 implementation
-    - Note that we can't directly install the `requirements.txt` due to an incompatibility with the latest `tensorflow` package. So just manually install them. To support the Cuda 11.8 drivers, we are installing tf==2.14:
-    - `pip install "matplotlib" "tensorflow==2.14" "numpy<2" librosa scipy pillow Unidecode inflect`
-    - The requirement that the `apex` library be installed is only if you want to run with `fp16` precision. In my case, I ignored this installation.
-- Install requirements for waveglow
-    - Although there also is a `requirements.txt`, I think the previous installations cover this, so you can ignore this installation
 - ffmpeg to process audio files
-    - `sudo apt update && sudo apt install ffmpeg`
+- requirements for gibiansky's wavernn
+
+```
+sudo apt update && sudo apt install ffmpeg python3-dev g++ libsndfile-dev libmkl-dev
+
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118 # GPU
+# pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu # local computer
+
+pip install "py-cord[voice]" PyYAML openai-whisper
+
+cd cloneai/tts/wavernn && pip install --editable .
+```
+
 
 #### Download checkpoints for fine-tuning
 
@@ -157,16 +152,3 @@ and the previous steps will be ran.
 for i in *.wav; do ffmpeg -y -i "$i" -ac 1 "mono_${i}"; done
 for i in mono_*; do mv "$i" "${i/#mono_/}"; done
 ```
-
-### Tensorboard
-
-```
-https://www.montefischer.com/2020/02/20/tensorboard-with-gcp.html
-gcloud compute ssh [INSTANCE_NAME] -- -NfL 6006:localhost:6006
-tensorboard --logdir=./results/results
-```
-
-### Fine-tuning tacotron2
-
-As mentionned before, the Nvidia implementation of tacotron2 is used. 
-

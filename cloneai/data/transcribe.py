@@ -12,26 +12,10 @@ Runs on Google Collab sheet. Make sure that the following commands are ran:
 """
 
 import os
-import numpy as np
 import re
-import shutil
 import textwrap
-
-########################################
-# Only for google collab
-##########################################
-# from google.colab import drive
-# drive.mount('/content/drive')
-# try:
-#     import tensorflow  # required in Colab to avoid protobuf compatibility issues
-# except ImportError:
-#     pass
-###########################################
-
 import torch
-import pandas as pd
 import whisper
-import torchaudio
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

@@ -1,10 +1,7 @@
-import torch
-import os
 import yaml
 import cloneai.data.extract as extract
 import cloneai.data.split as split
 import cloneai.data.transcribe as transcribe
-import cloneai.tts.tacotron2.train as tacotron2_train
 
 
 def load_config(filename):
@@ -20,9 +17,8 @@ if __name__ == "__main__":
 
     params = config["data"]["extract"]
     if params["enable"]:
-        extract.run(params["dir"]["raw"], params["dir"]["extracted"],
-                    params["merge"], params["ignore"], params["clean"],
-                    params["dir"]["zip_relpath"])
+        extract.run(params["input_zip"], params["dir"]["in"], params["dir"]["out"],
+                    params["merge"], params["ignore"], params["clean"])
 
     # -------------------------------------------------------------------
 
@@ -45,10 +41,4 @@ if __name__ == "__main__":
                        params["ignore"], params["min_confidence"],
                        params["del_wav_if_no_transcribe"])
 
-    # -------------------------------------------------------------------
-    
-    params = config["tts"]["tacotron2"]["train"]
-    if params["enable"]:
-        tacotron2_train.run(params["dir"]["in"], params["sample_rate_hz"], params["sample_length"])
-        
     # -------------------------------------------------------------------

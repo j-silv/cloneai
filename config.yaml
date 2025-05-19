@@ -1,14 +1,14 @@
 
 data:
   extract:
-    enable: 0
+    enable: 1
     merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
     ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
-    clean: True
+    clean: False # delete zipped archives as we extract
+    input_zip: raw-small.zip # relative to 'in' directory below
     dir:
-      raw: data/raw
-      extracted: data/extracted
-      zip_relpath: Craig
+      in: data/raw # relative to main workspace
+      out: data/extracted
 
   split:
     enable: 0
@@ -36,19 +36,7 @@ data:
     del_wav_if_no_transcribe: True
     ignore: []
     dir:
-      # speaker: /content/drive/MyDrive/cloneai/processed # google collab
       in: data/processed # local
-
-tts:
-  tacotron2:
-    train:
-      enable: 1
-      sample_rate_hz: 16000
-      sample_length: 480000
-      test_split: 0.5
-      batch_size: 64
-      dir:
-        in: data/processed/2-scott
 
 
 
