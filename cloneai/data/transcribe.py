@@ -29,7 +29,7 @@ def run(speaker_dir, model, verbose=False, ignore=[], min_confidence=-0.5, del_w
             # because we are at the directory not the sub-directory level
             continue
 
-        name = re.match(r"\d+-(\D+)_?(\d+)?", os.path.basename(root))
+        name = re.search(r"\d+-(\D+)_?(\d+)?", os.path.basename(root))
         name = name.group(1)
         name = re.sub(r"_", r"", name)
 
@@ -42,7 +42,7 @@ def run(speaker_dir, model, verbose=False, ignore=[], min_confidence=-0.5, del_w
                 if filename == "transcriptions.txt":
                     continue
                 print("Processing", f"{filename:<15}", end="")
-                name = re.match(r"(\w+)\.", filename).group(1)
+                name = re.match(r"(.*)\.", filename).group(1)
                 ext = re.search(r"\w+$", filename).group(0)
                 infile = os.path.join(root, filename)
 

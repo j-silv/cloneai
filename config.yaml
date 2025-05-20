@@ -11,7 +11,7 @@ data:
       out: data/extracted
 
   split:
-    enable: 1
+    enable: 0
     ignore: []
     max_splits: 500 # stop after we process more than 500 splits per speaker
     progress: True
@@ -29,8 +29,8 @@ data:
       out: data/processed
 
   transcribe:
-    enable: 0
-    model: turbo
+    enable: 1
+    model: tiny
     verbose: True
     min_confidence: -0.5 # avglogprob minimum, otherwise discard it
     del_wav_if_no_transcribe: True
