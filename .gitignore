@@ -2,7 +2,9 @@
 .venv/
 venv/
 data/*
-!data/raw-small.zip
+!data/raw
+data/raw/*
+!data/raw/raw-small.zip
 *.pt
 *code-workspace
 *.md
