@@ -128,7 +128,10 @@ def group_tracks(audio_files, out_dir, merge, ignore, clean=False):
         if clean is True:
             shutil.rmtree(file)
     
-    return speaker
+    dirs = []
+    for dir in speaker.values():
+        dirs.append(dir['dir'])
+    return dirs
 
 
 
@@ -154,4 +157,5 @@ def run(input_zip, in_dir, out_dir, merge, ignore, clean):
         audio_files = extract_zips(input_zip, in_dir, out_dir, log, recurse=True, clean=clean)
         speakers = group_tracks(audio_files, os.path.join(out_dir, "speaker"), merge, ignore, clean)
         return speakers
+
     print("Extraction completed")

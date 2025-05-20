@@ -1,7 +1,7 @@
 
 data:
   extract:
-    enable: 1
+    enable: 0
     merge: ["tstrip", "sheeblimp"] # whatever name is first will be merged all into this
     ignore: ["isaacbarzso", "Maki", "Alistair", "Craig"]
     clean: False # delete zipped archives as we extract
@@ -11,7 +11,7 @@ data:
       out: data/extracted
 
   split:
-    enable: 0
+    enable: 1
     ignore: []
     max_splits: 500 # stop after we process more than 500 splits per speaker
     progress: True
@@ -25,8 +25,8 @@ data:
     min_silence_s: 2
     min_nonsilence_s: 2
     dir:
-      speaker: data/raw/speaker
-      processed: data/processed
+      in: data/extracted/raw-small/speaker
+      out: data/processed
 
   transcribe:
     enable: 0

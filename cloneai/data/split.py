@@ -201,7 +201,6 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
         if name in ignore:
             continue
 
-        
         sentence_dir = os.path.join(processed_dir, os.path.basename(root))
         shutil.rmtree(sentence_dir, ignore_errors=True)
         os.makedirs(sentence_dir)
@@ -213,7 +212,7 @@ def run(speaker_dir, processed_dir, out_format, sample_rate_hz,
                 break
             
             print("Processing", file)
-            name = re.match(r"(\w+)\.", file).group(1)
+            name = re.search(r"(.*)\.", file).group(1)
             ext = re.search(r"\w+$", file).group(0)
             infile = os.path.join(root, file)
 

@@ -17,14 +17,14 @@ if __name__ == "__main__":
 
     params = config["data"]["extract"]
     if params["enable"]:
-        extract.run(params["input_zip"], params["dir"]["in"], params["dir"]["out"],
-                    params["merge"], params["ignore"], params["clean"])
+        speakers = extract.run(params["input_zip"], params["dir"]["in"], params["dir"]["out"],
+                               params["merge"], params["ignore"], params["clean"])
 
     # -------------------------------------------------------------------
 
     params = config["data"]["split"]
     if params["enable"]:
-        split.run(params["dir"]["speaker"], params["dir"]["processed"],
+        split.run(params["dir"]["in"], params["dir"]["out"],
                   params["out_format"],  params["sample_rate_hz"],
                   params["silence_db"], params["min_silence_s"],
                   params["min_nonsilence_s"], clean=params["clean"],
