@@ -2,6 +2,7 @@ import yaml
 import cloneai.data.extract as extract
 import cloneai.data.split as split
 import cloneai.data.transcribe as transcribe
+import cloneai.data.create_json as create_json
 
 
 def load_config(filename):
@@ -40,5 +41,15 @@ if __name__ == "__main__":
         transcribe.run(params["dir"]["in"], params["model"], params["verbose"],
                        params["ignore"], params["min_confidence"],
                        params["del_wav_if_no_transcribe"])
+
+    # -------------------------------------------------------------------
+    
+    
+    params = config["data"]["create_json"]
+    if params["enable"]:
+        create_json.run(params["dir"]["in"], params["dir"]["out"],
+                        params["train_split"],
+                        params["val_split"],
+                        params["seed"])
 
     # -------------------------------------------------------------------

@@ -13,7 +13,7 @@ data:
   split:
     enable: 0
     ignore: []
-    max_splits: 500 # stop after we process more than 500 splits per speaker
+    max_splits: 100 # stop after we process more than 500 splits per speaker
     progress: True
     verbose: False
     accurate: False
@@ -29,8 +29,8 @@ data:
       out: data/processed
 
   transcribe:
-    enable: 1
-    model: tiny
+    enable: 0
+    model: turbo
     verbose: True
     min_confidence: -0.5 # avglogprob minimum, otherwise discard it
     del_wav_if_no_transcribe: True
@@ -38,6 +38,14 @@ data:
     dir:
       in: data/processed # local
 
+  create_json:
+    enable: 1
+    seed: 1337
+    train_split: 0.5
+    val_split: 0.25 # the rest goes to test
+    dir:
+      in: data/processed/1-scott
+      out: data/processed/1-scott
 
 
     
