@@ -91,6 +91,7 @@ The last step is to go into the submodule and install its requirements:
 
 ```
 cd cloneai/wavernn && pip install --editable .
+pip install tensorboard
 ```
 
 Note that this last step is redundant for some of the modules installed previously. You might actually get some conflicts as well.

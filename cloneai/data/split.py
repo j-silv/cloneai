@@ -153,6 +153,7 @@ def write(infile, outfile, num_channels=1, ss=None, to=None, verbose=False, samp
         "verbose",
         "-y"] # overwrite files without asking
     
+    # TODO: bug -> we should include -ac on all and convert to mono
     if ss is not None and to is not None:
         if accurate:
             cmd.extend(["-i", infile, "-ss", str(ss), "-to", str(to)])

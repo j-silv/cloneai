@@ -3,6 +3,7 @@ VENV_PYTHON    = $(VENV)/bin/python
 SYSTEM_PYTHON  = $(or $(shell which python3), $(shell which python))
 PYTHON         = $(or $(wildcard $(VENV_PYTHON)), $(SYSTEM_PYTHON))
 MODULE 		   = cloneai
+WAVERNN 	   = $(MODULE)/wavernn
 DEBUG 		   ?= 0
 FLAG		   = -m
 
@@ -10,43 +11,26 @@ ifeq ($(DEBUG), 1)
     FLAG = -m pdb -m
 endif
 
-venv:
-	rm -rf $(VENV)
-	$(SYSTEM_PYTHON) -m $@ $(VENV)
-	$(VENV_PYTHON) -m pip install -r requirements.txt
-
-get_weights:
-	$(PYTHON) $(FLAG) $(MODULE).$@
-
 main:
 	$(PYTHON) $(FLAG) $(MODULE).$@
 
-extract:
-	$(PYTHON) $(FLAG) $(MODULE).data.$@
 
-split:
-	$(PYTHON) $(FLAG) $(MODULE).data.$@
+download_ljspeech:
+	wavernn dataset download ljspeech --destination $(WAVERNN)/ljspeech
+wavernn_ljspeech:
+	wavernn train --config $(WAVERNN)/config/wavernn.yaml --path $(WAVERNN)/runs/my-model --data ./$(WAVERNN)/ljspeech
 
-transcribe:
-	$(PYTHON) $(FLAG) $(MODULE).data.$@
+wavernn_train:
+	wavernn train --config $(WAVERNN)/config/wavernn.yaml --path $(WAVERNN)/runs/my-model --data ./data/processed/1-scott --test-every 100
 
-voice:
-	$(PYTHON) $(FLAG) $(MODULE).bot.$@
+wavernn_infer:
+	wavernn infer \
+		--path $(WAVERNN)runs/my-model \
+		--input ./data/processed/1-scott/craig_ZYNzcjw2Jx7d_2025-3-21_21-0-25_0_52.wav  \
+		--output resynthesized-scott.wav
 
-tts:
-	$(PYTHON) $(FLAG) $(MODULE).$@.tacotron2
+wavernn_export:
+	wavernn export --path $(WAVERNN)/runs/my-model --output $(WAVERNN)/runs/my-exported-model.jit
 
-test:
-	$(PYTHON) $(FLAG) $(MODULE).$@
 
-clean_raw:
-	rm -rf data/raw/*/
-	rm -f data/raw/**/*.log
-
-clean_processed:
-	rm -rf data/processed/*
-
-clean_extracted:
-	rm -rf data/extracted
-
-.PHONY: venv extract split transcribe test clean_raw clean_processed
+.PHONY: main wavernn_train wavernn_ljspeech 
