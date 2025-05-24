@@ -85,10 +85,19 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118 
 # pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu # local computer
 
 pip install "py-cord[voice]" PyYAML openai-whisper
-
-cd cloneai/tts/wavernn && pip install --editable .
 ```
 
+The above requirements can be installed for GPU or CPU using Python 3.10.15: 
+
+```
+pip install requirements_gpu.txt # or requirements_cpu.txt
+```
+
+The last step is to go into the submodule and install its requirements:
+
+```
+cd cloneai/wavernn && pip install --editable .
+```
 
 #### Download checkpoints for fine-tuning
 
