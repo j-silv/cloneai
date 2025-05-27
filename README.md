@@ -1,23 +1,14 @@
 # CloneAI
 
-This is a program which can digitally "clone" you or your friends voice and personality. The inspiration for this project came after my two best friends and I decided to record all of our voice conversations through Discord over the span of a year. Having GBs of audio data, I thought of possible applications I could target and one of them was the creation of voice clones of ourselves. Some further enhancements were to add real time (online) processing so that we could interact with these voice clones via Discord, Large Language Model (LLM) support so we could ask questions to these clones, and fine-tuning personality of the LLM so that it responds with our personality
+This is a program which can digitally "clone" voices. The inspiration for this project came after my two best friends and I decided to record all of our voice conversations through Discord over the span of 2 years. Having GBs and hours of single-track audio data, voice cloning seemed like the perfect application.
 
-# Pipeline
+To summarize the project: a TTS engine which is trained (or fine-tuned) on pre-recorded audio from a single speaker. An inference program then runs as a Discord bot and lets you and your friends generate speech from text by sending slash commands.
 
-1. Speech to text
-2. Text to response
-3. Response tweaked with personality
-4. Text to speech
+# Environment setup
 
-# Text to speech (TTS)
+To handle the compute requirements, I created a Google Compute VM instance with a single T4 GPU. Using a GPU is not strictly necessary, but the audio processing and the model training will be significantly slower if you do it on a CPU-only machine.
 
-I decided to start backwards from the pipeline and have a TTS engine which is fine-tuned on pre-recorded audio from a single speaker. This would be a fun little program which runs as a Discord bot and lets you and your friends generate speech from text by sending slash commands.
-
-## Pre-requisites
-
-To handle fine-tuning the TTS models and for quickly processing each audio file, I created a Google Compute VM instance with an added T4 GPU. This is not strictly necessary, but the audio processing and the model training will be significantly slower if you do it on a CPU-only machine.
-
-### Create a Google Compute VM
+## Google Compute VM setup
 
 Going to the Google Cloud console, we can select a standard VM with GPU support. Here are the specs that I chose:
 
@@ -41,7 +32,7 @@ On subsequent connections, you can then use basic SSH to connect to the machine'
 ssh VM_IP
 ```
 
-You can also install the Remote SSH connection for VScode to acces the VM through the external IP. If you do use this flow, I went ahead and installed the VS code Python extension directly on the remote machine.
+You can also install the Remote SSH connection for VScode to acces the VM through the external IP. If you do use this flow, I recommend installing the VS code Python extension directly on the remote machine. Also note that if you stop your machine via the Google Cloud console and start it back up, sometimes the host key will change and subsequent SSH connections via VS code will fail. You either have to delete the `~/.ssh/known_hosts` entry from the local machine and/or rerun the `gcloud` command shown above.
 
 
 ### Setting up SSH keys for GitHub
@@ -52,17 +43,18 @@ To access my GitHub repo, I set up SSH keys on the VM by generating an SSH keypa
 ssh-keygen -t ed25519 -C "YOUR_EMAIL"
 ```
 
-### Setting up VM environment
+## Pre-requisites
 
-First step is to clone this GitHub repository. In my home directory, I ran the following command. Note that the submodules flag is required since we are using Andrew Gibiansky's WaveRNN implementation.
+First step is to clone this GitHub repository.
 
 ```
-git clone --recurse-submodules git@github.com:j-silv/cloneai.git
+git clone https://github.com/j-silv/cloneai.git
+# git clone git@github.com:j-silv/cloneai.git # for dev
 ```
 
-Next we need to install the required Python modules and libraries.
+Next, we need to install the required Python modules and libraries.
 
-I created everything in a separate `venv` within this repository's root folder.
+I installed everything in a separate `venv` within this repository's root folder.
 
 ```
 cd cloneai
@@ -70,33 +62,22 @@ python -m venv venv
 source ./venv/bin/activate
 ```
 
-#### Requirements
+### Dependencies
 
 - PyTorch (Cuda 11.8) (`torchaudio` needed so we can download weights for pretrained model)
-- cloneai pip requirements
-    - Discord library, YAML parser, Pandas, and Whisper for transcription
+- Discord library, YAML parser, and Whisper for transcription
 - ffmpeg to process audio files
-- requirements for gibiansky's wavernn
 
 ```
-sudo apt update && sudo apt install ffmpeg python3-dev g++ libsndfile-dev libmkl-dev
-
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118 # GPU
 # pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu # local computer
 
 pip install "py-cord[voice]" PyYAML openai-whisper
 ```
 
-The last step is to go into the submodule and install its requirements:
+# How to run
 
-```
-cd cloneai/wavernn && pip install --editable .
-pip install tensorboard
-```
-
-Note that this last step is redundant for some of the modules installed previously. You might actually get some conflicts as well.
-
-#### Download checkpoints for fine-tuning
+## Download checkpoints for fine-tuning
 
 To have a starting point for adjusting the tacotron2 and waveglow model, I instantiated the models from PyTorch's documentation and saved it to a `state_dict` within the projects main directory.
 
@@ -106,38 +87,31 @@ You can run the following command to do this:
 make get_weights
 ```
 
-#### Download raw audio data
+## Download raw audio data
 
-These are nested zipped directories directly from Google Drive and generated by a Discord bot called Craig. This is a manual step to download them to the VM. I used `scp` to copy from my computer. While on your remote machine:
-
-```
-mkdir -p data/raw
-```
-
-And while on your local machine:
-
-```
-cd PATH_TO_ZIPPED_FILES
-zip ./audio_data.zip ./Craig-*.zip
-scp ./audio_data.zip YOURNAME@VM_IP:~/cloneai/data/raw
-```
-
-You can clean up the individual zip files after you copy it over:
-
-```
-rm -f ./Craig-*.zip
-```
-
-
-
-## How to run - text to speech
-
-Starting from scratch, you are going to need lots of single track audio for the particular speaker you want to clone. In my case, this was hours of audio recorded through Discord with the Craig bot which were saved to my Google Drive. My raw data was thus multiple zip files from Google Drive which contained nested zip files each with a recording that has multiple tracks.
+Starting from scratch, you are going to need lots of single-track audio for the particular speaker you want to clone. In my case, this was hours of audio recorded through Discord with the Craig bot which were saved to my Google Drive. My raw data was thus multiple zip files from Google Drive which contained nested zip files each with a recording that has multiple tracks.
 
 So the first step is this to unzip all of these directories and create a single directory for each speaker which holds all the raw audio. We also need to convert these audio files into a standardized format for subsequent model training.
 
+You first need to manually download the audio files from Craig to the machine you are using. Since I am using a Google VM, I used `scp` to copy the zipped folders from my local computer:
 
-### Prepare data
+```
+# mkdir data/raw # on remote machine so that scp doesn't fail
+cd PATH_TO_ZIPPED_FILES
+# zip ./audio_data.zip ./Craig-*.zip # if Google Drive gives you separated .zips 
+scp ./audio_data.zip YOURNAME@VM_IP:~/cloneai/data/raw
+```
+
+Note that you don't *have* to use Craig as the source of audio. However, the data extraction, splitting, and transcription steps of the TTS pipeline expect the format that Craig uses to package the data. Namely, individual folders for each separate recording with separate speaker tracks:
+
+```
+├── craig_RECID_DATE_TIME
+    ├── 1-SPEAKER_USERNAME.aac
+    ├── 2-SPEAKER_USERNAME.aac
+    └── ...etc.
+```
+
+## Prepare data
 
 In the `config.yaml` file, you can enable the following steps:
 
@@ -150,9 +124,13 @@ Then you can run:
 ```
 make main
 ```
-and the previous steps will be ran.
+and the enabled steps will run.
 
-### Converting to mono:
+## Converting to mono:
+
+As of 05/27/2025, there is a small bug which doesn't standardize the tracks to mono-channel. It's on my todo list!
+
+In the meantime, the files can be converted to mono with the following terminal commands:
 
 ```
 for i in *.wav; do ffmpeg -y -i "$i" -ac 1 "mono_${i}"; done
