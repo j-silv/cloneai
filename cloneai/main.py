@@ -1,8 +1,8 @@
 import yaml
-import cloneai.data.extract as extract
-import cloneai.data.split as split
-import cloneai.data.transcribe as transcribe
-import cloneai.data.create_json as create_json
+import cloneai.extract as extract
+import cloneai.split as split
+import cloneai.transcribe as transcribe
+import cloneai.tacotron2 as tacotron2
 
 
 def load_config(filename):
@@ -45,11 +45,11 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------
     
     
-    params = config["data"]["create_json"]
-    if params["enable"]:
-        create_json.run(params["dir"]["in"], params["dir"]["out"],
-                        params["train_split"],
-                        params["val_split"],
-                        params["seed"])
+    params = config["train"]
+    if params["tacotron2"]["enable"]:
+        tacotron2.run(params["dir"]["in"], params["dir"]["out"],
+                      params["train_split"],
+                      params["val_split"],
+                      params["seed"])
 
-    # -------------------------------------------------------------------
+    # -------------------------------------------------------------------  

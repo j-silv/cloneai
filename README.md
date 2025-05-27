@@ -115,9 +115,13 @@ Note that you don't *have* to use Craig as the source of audio. However, the dat
 
 In the `config.yaml` file, you can enable the following steps:
 
-- extract
-- split
-- transcribe
+- extract:
+    - extract data from the compressed zip files
+- split:
+    - group each audio file per speaker in their own directory
+    - process audio with FFmpeg and split audio files into short chunks based on silences
+- transcribe:
+    - run OpenAI Whisper transcription on the resulting chunks
 
 Then you can run:
 
@@ -125,6 +129,31 @@ Then you can run:
 make main
 ```
 and the enabled steps will run.
+
+## Tacotron2 (text-to-spectrogram)
+
+After getting the audio files and their associated transcriptions, we can now train the tacotron2 model as the first step of the TTS pipeline.
+
+We are downloading a pre-trained model from PyTorch audio. This is because the API for obtaining the model is straightforward. We can simply wrap the model around a fine-tuning optimization and the goal is that this speeds up training time required.
+
+We might have to scratch this though and train a tacotron2 model from the ground-up, if we find that using a pre-trained model is degrading the performance.
+
+The code in the `tacotron2.py` module might benefit from comparision with [PyTorch's example pipeline](https://github.com/pytorch/audio/tree/release/0.12/examples/pipeline_tacotron2). I think the general flow is similar, but I haven't compared in depth between the two.
+
+## WaveRNN (spectrogram-to-speech / vocoder)
+
+This part of the project has been arduous. In a similar vein as above, I wanted to create my own (simple) vocoder training loop so that I could learn more than just integrating someone elses.
+
+I got very close but then got stuck because of some odd GPU memory utilization which I can't reconcile. I included a very bare-bones example which shows how PyTorch cannot allocate enough GPU memory (apparently?) to support a reasonable amount of time samples. Nobody has provided any input on the PyTorch forums, and this was inhibiting a lot of my progress.
+
+I briefly explored the WaveRNN repository created by Andrew Gibiansky, but this had too many bells and whistles for my simple application. The repository was also somewhat out of date. Eventually we can explore some of the optimizations, but initially I just wanted to get a working pipeline.
+
+Thus I decided that despite the still lingering GPU usage issue, I will mitigate it by simply splitting up the sequence lengths of the melspectrograms small enough. This is what Andrew's code did and the example pipeline from PyTorch.
+
+## Note about smaller dataset
+
+To evaluate the training loops without getting bogged down by the high number of training samples, I am using a small dataset with just my friend Scott's voice. Once the module works for this small dataset and we can confirm the model's outputs, then we can transition to the entire Discord dataset.
+
 
 ## Converting to mono:
 

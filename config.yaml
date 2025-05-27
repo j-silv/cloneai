@@ -38,15 +38,15 @@ data:
     dir:
       in: data/processed # local
 
-  create_json:
+train:
+  seed: 1337
+  train_split: 0.5
+  val_split: 0.25 # the rest goes to test
+  dir:
+    in: data/processed/1-scott
+    out: data/processed/1-scott
+
+  tacotron2:
     enable: 1
-    seed: 1337
-    train_split: 0.5
-    val_split: 0.25 # the rest goes to test
-    dir:
-      in: data/processed/1-scott
-      out: data/processed/1-scott
 
-
-    
     
