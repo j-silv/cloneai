@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, random_split
 import torchaudio
 import torchaudio.transforms as T
 import re
@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from cloneai.utils import pad_or_trim
 import os
 import random
+from cloneai.utils import plot_waveform, plot_spectrogram
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -80,12 +81,12 @@ class AudioDataset(Dataset):
   def __init__(self,
                in_dir,                   # root directory for audio file paths and transcription file
                transcript,               # map file containing audio file paths and transcriptions
+               audio_config,             # dict of options that applies to AudioConfig dataclass
                resample=False,           # if True, resample audio to specified sample rate
                processor=None,           # text processor (tokenizer). If None, use default
-               **kwargs                  # keyword arguments that apply to AudioConfig dataclass
               ):
 
-    self.audio_config = AudioConfig(**kwargs)
+    self.audio_config = AudioConfig(**audio_config)
 
     if processor is None or processor == "WAVERNN_CHAR_LJSPEECH":
       processor = (
@@ -260,12 +261,57 @@ class AudioDataset(Dataset):
             self.mels[idx], self.mel_lens[idx])
 
 
+def run(in_dir, out_dir, seed, resample, processor, audio_config, split, batch_size):
+    """Load dataset, plot waveforms/specgrams, and prepare batch data"""
+    torch.manual_seed(seed)
+    
+    dataset = AudioDataset(in_dir, "transcriptions.txt", audio_config, resample, processor)
+    
+    print(  f"{dataset.waveforms.shape=}",
+            f"{dataset.tokens.shape=}",
+            f"{dataset.token_lens.shape=}",
+            f"{dataset.mels.shape=}",
+            f"{dataset[0][0].shape=}",
+            f"{dataset[0][1]=}",
+            f"{dataset[0][2].shape=}",
+            f"{dataset[0][3]=}",
+            sep="\n")
 
+    outputImg = os.path.join(out_dir, "waveform.png")
+    print("Raw waveform:", outputImg)
+    plot_waveform(dataset.waveforms[0, :, :int(dataset.waveform_lens[0])], outputImg=outputImg, title="Raw waveform")
+    
+    outputImg = os.path.join(out_dir, "padded_waveform.png")
+    print("Padded waveform:", outputImg)
+    plot_waveform(dataset.waveforms[0], outputImg=outputImg, title="Padded waveform")    
+    
+    outputImg = os.path.join(out_dir, "raw_specgram.png")
+    print("Raw specgram:", outputImg) # note extra dimension due to WaveRNN.forward requirements
+    plot_spectrogram(dataset.raw_mels[0, :, :, :int(dataset.mel_lens[0])], outputImg=outputImg, title="Raw spectrogram")    
 
+    outputImg = os.path.join(out_dir, "log_specgram.png")
+    print("Log specgram:", outputImg) # note extra dimension due to WaveRNN.forward requirements
+    plot_spectrogram(dataset.mels[0, :, :, :int(dataset.mel_lens[0])], outputImg=outputImg, logCompressed=True, title="Log spectrogram")  
+    
 
+    print(f"{split=}")
+    print(f"{batch_size=}")
 
-
-
+    train, val, test = random_split(dataset, split) # pytorch implementation vs mine
+    # train,val,test = dataset.split_train_val_test(hyperparams["split"], seed)
+    
+    # TODO: could explore shuffling data after every epoch
+    #       but then we have to be careful to avoid the enforce_sorted? not sure why this is True
+    # TODO: we have to chunk up waveforms and specgrams when passing into WaveRNN due to GPU bug
+    #       I'll have to think how I want to set this up -> I think it should be totally on the WaveRNN
+    #       side because when we do inference I'll still have to do the same thing. 
+    train = DataLoader(train, batch_size=batch_size)
+    val = DataLoader(val, batch_size=batch_size)
+    test = DataLoader(test, batch_size=batch_size)
+    
+    print(f"{next(iter(train))[0].shape}")
+    
+    return dataset, train, val, test  
 
 
 

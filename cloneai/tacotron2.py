@@ -1,64 +1,18 @@
 import torch
 from torch import nn
-from torch.utils.data import Dataset, DataLoader, random_split, Subset
 import torchaudio
-from cloneai.dataset import AudioDataset
-from cloneai.utils import plot_waveform, plot_spectrogram
+from cloneai.utils import plot_spectrogram
 import os
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 
-def run(in_dir, out_dir, seed, resample, processor, audio_config, hyperparams):
-    torch.manual_seed(seed)
+def run(data, out_dir, hyperparams):
+    dataset, train, val, test = data
     
-    dataset = AudioDataset(in_dir, "transcriptions.txt", resample, processor, **audio_config)
-    
-    print(  f"{dataset.waveforms.shape=}",
-            f"{dataset.tokens.shape=}",
-            f"{dataset.token_lens.shape=}",
-            f"{dataset.mels.shape=}",
-            f"{dataset[0][0].shape=}",
-            f"{dataset[0][1]=}",
-            f"{dataset[0][2].shape=}",
-            f"{dataset[0][3]=}",
-            sep="\n")
-
-    outputImg = os.path.join(out_dir, "waveform.png")
-    print("Raw waveform:", outputImg)
-    plot_waveform(dataset.waveforms[0, :, :int(dataset.waveform_lens[0])], outputImg=outputImg, title="Raw waveform")
-    
-    outputImg = os.path.join(out_dir, "padded_waveform.png")
-    print("Padded waveform:", outputImg)
-    plot_waveform(dataset.waveforms[0], outputImg=outputImg, title="Padded waveform")    
-    
-    outputImg = os.path.join(out_dir, "raw_specgram.png")
-    print("Raw specgram:", outputImg) # note extra dimension due to WaveRNN.forward requirements
-    plot_spectrogram(dataset.raw_mels[0, :, :, :int(dataset.mel_lens[0])], outputImg=outputImg, title="Raw spectrogram")    
-
-    outputImg = os.path.join(out_dir, "log_specgram.png")
-    print("Log specgram:", outputImg) # note extra dimension due to WaveRNN.forward requirements
-    plot_spectrogram(dataset.mels[0, :, :, :int(dataset.mel_lens[0])], outputImg=outputImg, logCompressed=True, title="Log spectrogram")  
-    
-    print("Hyperparams:")
-    print(hyperparams)  
-    
-    # train,val,test = dataset.split_train_val_test(hyperparams["split"], seed)
-    train, val, test = random_split(dataset, hyperparams["split"]) # pytorch implementation vs mine
-    
-    # TODO: could explore shuffling data after every epoch
-    #       but then we have to be careful to avoid the enforce_sorted? not sure why this is True
-    # TODO: we have to chunk up waveforms and specgrams when passing into WaveRNN due to GPU bug
-    #       I'll have to think how I want to set this up -> I think it should be totally on the WaveRNN
-    #       side because when we do inference I'll still have to do the same thing. 
-    train = DataLoader(train, batch_size=hyperparams["batch_size"])
-    val = DataLoader(val, batch_size=hyperparams["batch_size"])
-    test = DataLoader(test, batch_size=hyperparams["batch_size"])
-    
-    print(f"{next(iter(train))[0].shape}")
-
     bundle = torchaudio.pipelines.TACOTRON2_WAVERNN_CHAR_LJSPEECH
+    processor = bundle.get_text_processor()
 
     model = bundle.get_tacotron2()
     model.train()
@@ -108,3 +62,24 @@ def run(in_dir, out_dir, seed, resample, processor, audio_config, hyperparams):
                 print(f"Epoch {epoch+1} | loss: {loss:>7f}")
 
     print("Done!")
+    
+    
+    # sanity check compare spectrogram output with golden
+    # compare against a sample that the tacotron2 was trained on
+    test_token, test_token_len = next(iter(train))[0][:1], next(iter(train))[1][:1]
+    golden_spec, golden_spec_len = next(iter(train))[4][:1], next(iter(train))[5][:1]
+    with torch.inference_mode():
+        spec, spec_len, _ = model.infer(test_token, test_token_len)
+    
+    outputImg = os.path.join(out_dir, "golden_log_specgram.png")
+    print("Golden log specgram:", outputImg)
+    plot_spectrogram(golden_spec[0, :, :, :int(golden_spec_len[0])], outputImg=outputImg, logCompressed=True, title="Golden log spectrogram")  
+    
+    outputImg = os.path.join(out_dir, "predicted_log_specgram.png")
+    print("Predicted log specgram:", outputImg)
+    spec = spec.unsqueeze(1)
+    plot_spectrogram(spec[0, :, :, :int(spec_len[0])], outputImg=outputImg, logCompressed=True, title="Predicted log spectrogram")  
+    
+    
+    
+    

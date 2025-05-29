@@ -3,6 +3,7 @@ import cloneai.extract as extract
 import cloneai.split as split
 import cloneai.transcribe as transcribe
 import cloneai.tacotron2 as tacotron2
+import cloneai.dataset as dataset
 
 
 def load_config(filename):
@@ -44,14 +45,17 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------
     
+    params = config["load"]
+    if params["enable"]:
+        data = dataset.run(params["dir"]["in"], params["dir"]["out"],
+                           params["seed"], params["resample"], params["processor"],
+                           params["audio"], params["split"], params["batch_size"])
+
+    # -------------------------------------------------------------------  
     
     params = config["train"]
+    print(params)
     if params["tacotron2"]["enable"]:
-        tacotron2.run(params["dir"]["in"], params["dir"]["out"],
-                      params["seed"],
-                      params["resample"],
-                      params["processor"],
-                      params["audio"],
-                      params["hyperparams"])
+        tacotron2.run(data, params["dir"]["out"], params["tacotron2"]["hyperparams"])
 
     # -------------------------------------------------------------------  
