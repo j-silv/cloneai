@@ -48,11 +48,10 @@ if __name__ == "__main__":
     params = config["train"]
     if params["tacotron2"]["enable"]:
         tacotron2.run(params["dir"]["in"], params["dir"]["out"],
-                      params["train_split"],
-                      params["val_split"],
                       params["seed"],
                       params["resample"],
                       params["processor"],
-                      params["audio"])
+                      params["audio"],
+                      params["hyperparams"])
 
     # -------------------------------------------------------------------  

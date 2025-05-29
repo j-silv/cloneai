@@ -103,15 +103,23 @@ class AudioDataset(Dataset):
     
     self.tokens, self.token_lens = self.text_to_tokens(transcriptions, processor)
     
+    # TODO: we need to set this per batch -> otherwise one line in transcript
+    #       which is long adds a lot of unnecessary memory for other batches
     self.max_token_len = self.token_lens[0] # equivalently, self.tokens.shape[-1]
     
     self.waveforms, self.waveform_lens, self.mel_lens =\
-      self.load_audio(audio_files, resample, self.audio_config)
+      self.load_audio(audio_files, resample, self.audio_config)    
     
-    
-    
-    self.mels = self.create_mel(self.waveforms, self.audio_config)
+    self.raw_mels, self.mels = self.create_mel(self.waveforms, self.audio_config)
 
+    
+    self.tokens = self.tokens.to(device)
+    self.token_lens = self.token_lens.to(device)
+    self.waveforms = self.waveforms.to(device)
+    self.waveform_lens = self.waveform_lens.to(device)
+    self.mels = self.mels.to(device)
+    self.mel_lens = self.mel_lens.to(device)
+    
 
   @staticmethod
   def load_text(in_dir, transcript):
@@ -143,18 +151,9 @@ class AudioDataset(Dataset):
     
     TODO: do this per batch when the model is called instead of the entire dataset
           at initialization
-
-    the tacotron2 model expects input batches with decreasing size of token arrays
-    so we have to sort the array and keep track of indexes for aligning the mel spectograms:
-    `lengths` array must be sorted in decreasing order when `enforce_sorted` is True
           
     """
-    tokens, token_lengths = processor(transcriptions)
-    token_lengths, idx_sorted_samples = torch.sort(token_lengths, descending=True)
-
-    # simple PyTorch indexing lets us reindex based on the sorted samples above
-    tokens = tokens[idx_sorted_samples]
-    
+    tokens, token_lengths = processor(transcriptions)  
     return tokens, token_lengths
 
   @staticmethod
@@ -164,11 +163,12 @@ class AudioDataset(Dataset):
     num_audio_files = len(audio_files)
 
     audio_data = torch.zeros((num_audio_files, 1, config.audio_length_samples))
-    audio_lengths = torch.zeros((num_audio_files))
-    specgram_lengths = torch.zeros((num_audio_files))
+    audio_lengths = torch.zeros((num_audio_files), dtype=torch.long)
+    specgram_lengths = torch.zeros((num_audio_files), dtype=torch.long)
 
     for idx, audio_file in enumerate(audio_files):
         audio, native_sr = torchaudio.load(audio_file)
+        assert audio.shape[0] == 1, "Only mono-channel audio files are supported"
         if resample is True:
           resampler = T.Resample(native_sr, config.sr, dtype=audio.dtype)
           audio = resampler(audio)
@@ -215,38 +215,48 @@ class AudioDataset(Dataset):
       # as per tacotron2 paper, clip to minimum value and compress with log
       log_mels = torch.clamp(mels, min=config.min_mag).log10()
       
-      return log_mels
+      return mels, log_mels
 
-  @staticmethod
-  def split_train_val_test(num_samples, train_split, val_split, seed):
-    """Generate train / validation / test split indices"""
+  def split_train_val_test(self, split, seed):
+    """Generate train / validation / test split indices
+    
+    Unused since PyTorch already has a helper function
+    """
+    
     random.seed(seed)
     
-    samples = range(num_samples)
-    random.shuffle(samples)
+    assert sum(split) == 1, "Train/val/test splits must add up to 1"
+    
+    train_split, val_split, test_split = split
+    
+    samples = range(self.num_samples)
+    samples = random.sample(samples, self.num_samples)
     
     train_start = 0
-    train_end = int(train_split*num_samples)
+    train_end = int(train_split*self.num_samples) + 1
     
     val_start = train_end
-    val_end = val_start + int(val_split*num_samples)
+    val_end = val_start + int(val_split*self.num_samples) + 1
     
     test_start = val_end
-    test_end = num_samples
+    test_end = val_end + int(test_split*self.num_samples) + 1
+    
+    assert test_end >= self.num_samples, "We are missing some samples when generating test split"
     
     train = samples[train_start:train_end]
     val = samples[val_start:val_end]
     test = samples[test_start:test_end]
     
     return train,val,test
-
+  
 
   # functions required for pytorch
   def __len__(self):
     return self.num_samples
 
   def __getitem__(self, idx):
-    return (self.waveforms[idx], self.waveform_lens[idx],
+    return (self.tokens[idx], self.token_lens[idx],
+            self.waveforms[idx], self.waveform_lens[idx],
             self.mels[idx], self.mel_lens[idx])
 
 
