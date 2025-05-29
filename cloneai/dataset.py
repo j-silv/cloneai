@@ -1,3 +1,41 @@
+import torch
+from torch.utils.data import Dataset
+import torchaudio
+import torchaudio.transforms as T
+import re
+import os
+from dataclasses import dataclass
+from cloneai.utils import pad_or_trim
+import os
+import random
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+@dataclass
+class AudioConfig:
+  sr: int = 16000
+  frame_size_s: float = 0.05
+  frame_hop_s: float = 0.0125
+  audio_length_s: float = 30.0
+  n_mels: int = 80
+  window: str = "hann"
+  kernel_size: int = 5
+  min_mag: float = 0.01
+
+  def __post_init__(self):
+    """Add new fields after creating AudioConfig instance"""
+    self.audio_length_samples = int(self.audio_length_s*self.sr)
+    # TODO: set n_fft to a power of 2 for FFT speedup
+    self.frame_size_samples = int(self.frame_size_s*self.sr)
+    self.frame_hop_samples = int(self.frame_hop_s*self.sr)
+    
+    if self.window == "hann":
+      self.window = torch.hann_window
+    else:
+      raise ValueError("Invalid window function for AudioConfig")
+    
+
+
 class AudioDataset(Dataset):
   """PyTorch dataset for training tacotron2
   
@@ -38,227 +76,118 @@ class AudioDataset(Dataset):
   so we need to actually determine the appropiate waveform shape which is
   (n_time - kernel_size + 1)*hop_length to be appropiate
   
-  """
-  
-  def __init__(self, in_dir, sr=16000, frame_size_s=0.05, frame_hop_s=0.0125,
-               audio_length_s=30, n_mels=80, window='hann', min_mag=0.01,
-               transcript_file="transcriptions.txt", processor=None, max_files=10):
+  """  
+  def __init__(self,
+               in_dir,                   # root directory for audio file paths and transcription file
+               transcript,               # map file containing audio file paths and transcriptions
+               resample=False,           # if True, resample audio to specified sample rate
+               processor=None,           # text processor (tokenizer). If None, use default
+               **kwargs                  # keyword arguments that apply to AudioConfig dataclass
+              ):
 
-    self.in_dir = in_dir
-    self.sr = sr
-    self.n_mels = n_mels
-    self.audio_length_s = audio_length_s
-    self.frame_size_s = frame_size_s
-    self.frame_hop_s = frame_hop_s
-    self.window = window
-    self.min_mag = min_mag
-    self.transcript_file = transcript_file
-    self.max_files = 10
+    self.audio_config = AudioConfig(**kwargs)
 
-    if processor is None:
-      self.processor = (
+    if processor is None or processor == "WAVERNN_CHAR_LJSPEECH":
+      processor = (
           torchaudio
           .pipelines
           .TACOTRON2_WAVERNN_CHAR_LJSPEECH
           .get_text_processor()
       )
+    else:
+      raise ValueError("Invalid processor value for AudioDataset")
 
-    self.load_text()
-    self.text_to_tokens()
-    self.create_mel()
+    audio_files, transcriptions = self.load_text(in_dir, transcript)
+    
+    self.num_samples = len(audio_files)
+    
+    self.tokens, self.token_lens = self.text_to_tokens(transcriptions, processor)
+    
+    self.max_token_len = self.token_lens[0] # equivalently, self.tokens.shape[-1]
+    
+    self.waveforms, self.waveform_lens, self.mel_lens =\
+      self.load_audio(audio_files, resample, self.audio_config)
+    
+    
+    
+    self.mels = self.create_mel(self.waveforms, self.audio_config)
 
 
-  def load_text(self):
+  @staticmethod
+  def load_text(in_dir, transcript):
 
     # e.g.: 8_56_368.wav|We start with, we rethink everything.
     re_transcription = re.compile(r"(.*)\|(.*)")
 
-    with open(os.path.join(self.in_dir, self.transcript_file), "r") as f:
-        lines = f.readlines()
-
-    self.num_samples = min(self.max_files, len(lines))
-    self.audio_files    = []  # full path to audio files
-    self.transcriptions = []  # raw transcription texts from Whisper
-
-    count = 0
-    for line in lines:
+    audio_files    = []  # full path to audio files
+    transcriptions = []  # raw transcription texts from Whisper
+    
+    with open(os.path.join(in_dir, transcript), "r") as f:
+      for line in f:
         re_result = re_transcription.match(line)
-        self.audio_files.append(os.path.join(self.in_dir, re_result.group(1)))
-        self.transcriptions.append(re_result.group(2))
+        audio_files.append(os.path.join(in_dir, re_result.group(1)))
+        transcriptions.append(re_result.group(2))
+     
+    return audio_files, transcriptions
 
-        count += 1
+  @staticmethod
+  def text_to_tokens(transcriptions, processor):
+    """Convert text to tokens
+    
+    tacotron2 forward pass expects the following shapes:
+      tokens               - (n_batch, max of token_lengths)
+      token_lengths        - (n_batch, )
 
-        if count == self.max_files:
-          break
+    when a list is passed in, the text is automatically zero-padded
+    to the max length of the list
+    
+    TODO: do this per batch when the model is called instead of the entire dataset
+          at initialization
 
-
-  def text_to_tokens(self):
-    # tacotron2 forward pass expects the following shapes:
-    #   tokens               - (n_batch, max of token_lengths)
-    #   token_lengths        - (n_batch, )
-
-
-    # when a list is passed in, the text is automatically zero-padded
-    # to the max length of the list
-    # TODO: do this per batch when the model is called instead of the entire dataset
-    #       at initialization
-    self.tokens, self.token_lengths = self.processor(self.transcriptions)
-
-    # the tacotron2 model expects input batches with decreasing size of token arrays
-    # so we have to sort the array and keep track of indexes for aligning the mel spectograms
-    # """ `lengths` array must be sorted in decreasing order when `enforce_sorted` is True."""
-    self.token_lengths, self.idx_sorted_samples = torch.sort(self.token_lengths, descending=True)
-    self.max_token_length = self.token_lengths[0]
+    the tacotron2 model expects input batches with decreasing size of token arrays
+    so we have to sort the array and keep track of indexes for aligning the mel spectograms:
+    `lengths` array must be sorted in decreasing order when `enforce_sorted` is True
+          
+    """
+    tokens, token_lengths = processor(transcriptions)
+    token_lengths, idx_sorted_samples = torch.sort(token_lengths, descending=True)
 
     # simple PyTorch indexing lets us reindex based on the sorted samples above
-    self.tokens = self.tokens[self.idx_sorted_samples]
+    tokens = tokens[idx_sorted_samples]
+    
+    return tokens, token_lengths
 
-    self.tokens = self.tokens.to(device)
-    self.token_lengths = self.token_lengths.to(device)
+  @staticmethod
+  def load_audio(audio_files, resample, config):
+    """load audio data into memory from audio_files path"""
+    
+    num_audio_files = len(audio_files)
 
+    audio_data = torch.zeros((num_audio_files, 1, config.audio_length_samples))
+    audio_lengths = torch.zeros((num_audio_files))
+    specgram_lengths = torch.zeros((num_audio_files))
 
-  def create_mel(self):
-    # tacotron2 forward pass expects the following shapes:
-    #   mel_specgram         - (n_batch, n_mels, max of mel_specgram_lengths)
-    #   mel_specgram_lengths - (n_batch, )
-
-    # TODO: set n_fft to a power of 2 for FFT speedup
-    frame_size_samples = librosa.time_to_samples(self.frame_size_s, sr=self.sr)
-    frame_hop_samples = librosa.time_to_samples(self.frame_hop_s, sr=self.sr)
-    audio_length_samples = librosa.time_to_samples(self.audio_length_s, sr=self.sr)
-
-
-    # +1 because that's how the STFT calculation works
-    # tensor because this is actually an input into the model
-    assert audio_length_samples % frame_hop_samples == 0
-    self.num_frames = torch.tensor((audio_length_samples // frame_hop_samples) + 1)
-
-
-    # technically we don't need to keep track of mels
-    # but this is just for debugging
-    self.mels = torch.zeros((self.num_samples,
-                                 self.n_mels,
-                                 self.num_frames))
-
-    self.log_mels = torch.zeros_like(self.mels)
-
-
-    # TODO: might need to do this as a batch processing step,
-    #       instead of loading every single spectogram into memory (costly)
-    for idx, audio_file in enumerate(self.audio_files):
-      print(f"Loading {os.path.basename(audio_file)}")
-
-      # everything is resampled, also
-      # all transcriptions were padded or trimmed to 30 seconds, so
-      # we should match that for training as well. otherwise if we use
-      # a different size, then the transcript might not align with the spectogram
-      audio = whisper.load_audio(audio_file)
-      audio = whisper.pad_or_trim(audio)
-
-      mel_spec = librosa.feature.melspectrogram(
-          y=audio,
-          sr=self.sr,
-          n_fft=frame_size_samples,
-          hop_length=frame_hop_samples,
-          window=self.window,
-          n_mels=self.n_mels
-      )
-
-      # as per paper, compress with log and clip to minimum value of 0.01
-      log_spec = torch.clamp(torch.tensor(mel_spec), min=self.min_mag).log10()
-
-      # make sure to use the appropiate index into the sorted tensor
-      self.mels[self.idx_sorted_samples[idx]] = torch.tensor(mel_spec)
-      self.log_mels[self.idx_sorted_samples[idx]] = log_spec
-
-    self.log_mels = self.log_mels.to(device)
-    self.num_frames = self.num_frames.to(device)
-
-
-  # functions required for pytorch
-  def __len__(self):
-    return self.num_samples
-
-  def __getitem__(self, idx):
-    return (self.tokens[idx], self.token_lengths[idx],
-            self.log_mels[idx], self.num_frames)
-
-
-
-
-
-class AudioDataset(Dataset):
-  """PyTorch dataset wrapper for training WaveRNN"""
-
-  def __init__(self,
-               in_dir,                   # root directory for audio file paths and transcription file
-               transcript,               # map file containing audio file paths and transcriptions
-               resample=False,           # if True, resample audio to specified sample rate
-               sr=16000,                 # sampling rate
-               frame_size_s=0.05,        # melspectogram frame size in seconds
-               frame_hop_s=0.0125,       # melspectogram hop size in seconds
-               audio_length_s=30,        # padded audio length in seconds
-               n_mels=80,                # melspectogram frequency bins
-               window=torch.hann_window, # melspectogram window function
-               kernel_size=5,            # kernel size for upsampling in WaveRNN
-               min_mag=0.01              # melspectogram clipped magnitude
-              ):
-
-    self.sr = sr
-    self.audio_length_samples = int(audio_length_s*sr)
-
-    # TODO: set n_fft to a power of 2 for FFT speedup
-    self.frame_size_samples = int(frame_size_s*sr)
-
-    self.frame_hop_samples = int(frame_hop_s*sr)
-
-    self.n_mels = n_mels
-    self.window = window
-    self.min_mag = min_mag
-
-    self.kernel_size = kernel_size
-
-
-    self.load_audio(in_dir, transcript, resample)
-
-
-    self.create_mel()
-
-
-  def load_audio(self, in_dir, transcript, resample):
-    """load audio data from transcription mapping file"""
-
-    regex = re.compile(r"(.*)\|(.*)")
-
-    with open(os.path.join(in_dir, transcript), "r") as f:
-        lines = f.readlines()
-
-    self.num_audio_files = len(lines)
-
-    self.audio_data = torch.zeros((self.num_audio_files, 1, self.audio_length_samples))
-    self.audio_lengths = torch.zeros((self.num_audio_files))
-    self.specgram_lengths = torch.zeros((self.num_audio_files))
-
-    for idx, line in enumerate(lines):
-        re_result = regex.match(line)
-
-        audio, native_sr = torchaudio.load(os.path.join(in_dir, re_result.group(1)))
+    for idx, audio_file in enumerate(audio_files):
+        audio, native_sr = torchaudio.load(audio_file)
         if resample is True:
-          resampler = T.Resample(native_sr, self.sr, dtype=audio.dtype)
+          resampler = T.Resample(native_sr, config.sr, dtype=audio.dtype)
           audio = resampler(audio)
-          self.sr = native_sr
+          config.sr = native_sr
 
         # use the full waveform shape to compute the expected number of specgrams
         # then update the audio_lengths to fit the pytorch API -> upsampling due to kernel
-        self.specgram_lengths[idx] = (audio.shape[-1] // self.frame_hop_samples) + 1
-        self.audio_lengths[idx] = (self.specgram_lengths[idx] - self.kernel_size + 1)*self.frame_hop_samples
+        specgram_lengths[idx] = (audio.shape[-1] // config.frame_hop_samples) + 1
+        audio_lengths[idx] = (specgram_lengths[idx] - config.kernel_size + 1)*config.frame_hop_samples
 
         # padding is not optional because we are storing result in a tensor
-        audio = pad_or_trim(audio, self.audio_length_samples)
-        self.audio_data[idx,...] = audio
+        audio = pad_or_trim(audio, config.audio_length_samples)
+        audio_data[idx,...] = audio
+        
+    return audio_data, audio_lengths, specgram_lengths
 
 
-  def create_mel(self):
+  @staticmethod
+  def create_mel(waveforms, config):
       """generate the mel spectogram from the audio file
 
       waveRNN forward pass expects the following shapes:
@@ -270,30 +199,55 @@ class AudioDataset(Dataset):
 
       # +1 because that's how the STFT calculation works
       # tensor because this is actually an input into the model
-      assert self.audio_length_samples % self.frame_hop_samples == 0
-      self.num_frames = torch.tensor((self.audio_length_samples // self.frame_hop_samples) + 1)
+      assert config.audio_length_samples % config.frame_hop_samples == 0
+      num_frames = torch.tensor((config.audio_length_samples // config.frame_hop_samples) + 1)
 
       mel_transform = T.MelSpectrogram(
-          sample_rate=self.sr,
-          n_fft=self.frame_size_samples,
-          hop_length=self.frame_hop_samples,
-          n_mels=self.n_mels,
-          window_fn=self.window
+          sample_rate=config.sr,
+          n_fft=config.frame_size_samples,
+          hop_length=config.frame_hop_samples,
+          n_mels=config.n_mels,
+          window_fn=config.window
       )
 
-      self.mels = mel_transform(self.audio_data)
+      mels = mel_transform(waveforms)
 
       # as per tacotron2 paper, clip to minimum value and compress with log
-      self.log_mels = torch.clamp(self.mels, min=self.min_mag).log10()
+      log_mels = torch.clamp(mels, min=config.min_mag).log10()
+      
+      return log_mels
+
+  @staticmethod
+  def split_train_val_test(num_samples, train_split, val_split, seed):
+    """Generate train / validation / test split indices"""
+    random.seed(seed)
+    
+    samples = range(num_samples)
+    random.shuffle(samples)
+    
+    train_start = 0
+    train_end = int(train_split*num_samples)
+    
+    val_start = train_end
+    val_end = val_start + int(val_split*num_samples)
+    
+    test_start = val_end
+    test_end = num_samples
+    
+    train = samples[train_start:train_end]
+    val = samples[val_start:val_end]
+    test = samples[test_start:test_end]
+    
+    return train,val,test
 
 
   # functions required for pytorch
   def __len__(self):
-    return self.num_audio_files
+    return self.num_samples
 
   def __getitem__(self, idx):
-    return (self.audio_data[idx], self.audio_lengths[idx],
-            self.log_mels[idx], self.specgram_lengths[idx])
+    return (self.waveforms[idx], self.waveform_lens[idx],
+            self.mels[idx], self.mel_lens[idx])
 
 
 
@@ -303,58 +257,8 @@ class AudioDataset(Dataset):
 
 
 
-"""Create dataset.json for dataset which is expected by WaveRNN submodule
 
-The WaveRNN submodule expects a dataset.json which splits training, validation, and testing samples.
 
-Here we follow that convention and also use this for tacotron2 training.
-"""
 
-import json
-import os
-import random
 
-def split_train_val_test(in_dir, out_dir, train_split, val_split, seed):
 
-    # Generate dataset.json with train / validation / test split.
-    
-    # use transcriptions.txt to split up the datasets randomly
-    in_file = os.path.join(in_dir, "transcriptions.txt")
-    
-    audio_files = []
-
-    with open(in_file, "r") as handle:
-        for line in handle:
-            audio_file = line.split('|', 1)[0]
-            audio_files.append(audio_file)
-
-    num_audio_files = len(audio_files)
-    
-    random.seed(seed)
-    random.shuffle(audio_files)
-    
-    train_start = 0
-    train_end = int(train_split*num_audio_files)
-    
-    val_start = train_end
-    val_end = val_start + int(val_split*num_audio_files)
-    
-    test_start = val_end
-    test_end = num_audio_files
-    
-    train = audio_files[train_start:train_end]
-    val = audio_files[val_start:val_end]
-    test = audio_files[test_start:test_end]
-    
-
-    out_file = os.path.join(out_dir, "dataset.json")
-    with open(out_file, "w") as handle:
-        json.dump(
-            {
-                "train": train,
-                "valid": val,
-                "test": test,
-            },
-            handle,
-            indent=2,
-        )

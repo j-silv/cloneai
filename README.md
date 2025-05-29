@@ -65,14 +65,14 @@ source ./venv/bin/activate
 ### Dependencies
 
 - PyTorch (Cuda 11.8) (`torchaudio` needed so we can download weights for pretrained model)
-- Discord library, YAML parser, and Whisper for transcription
+- Discord library, YAML parser, Matplotlib, and Whisper for transcription
 - ffmpeg to process audio files
 
 ```
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118 # GPU
 # pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu # local computer
 
-pip install "py-cord[voice]" PyYAML openai-whisper
+pip install "py-cord[voice]" PyYAML openai-whisper matplotlib
 ```
 
 # How to run

@@ -50,6 +50,9 @@ if __name__ == "__main__":
         tacotron2.run(params["dir"]["in"], params["dir"]["out"],
                       params["train_split"],
                       params["val_split"],
-                      params["seed"])
+                      params["seed"],
+                      params["resample"],
+                      params["processor"],
+                      params["audio"])
 
     # -------------------------------------------------------------------  

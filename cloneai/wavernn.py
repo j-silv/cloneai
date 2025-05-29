@@ -11,9 +11,8 @@ import torchaudio.functional as F
 import torchaudio.transforms as T
 import matplotlib.pyplot as plt
 import numpy as np
-from google.colab import drive
 
-drive.mount('/content/drive')
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 

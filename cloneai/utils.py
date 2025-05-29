@@ -1,16 +1,9 @@
 
 # Utility functions
-
-
-def plot_mel_spec(mel, sr):
-  fig, ax = plt.subplots()
-  S_dB = librosa.power_to_db(mel, ref=np.max)
-  img = librosa.display.specshow(S_dB, x_axis='time',
-                          y_axis='mel', sr=sr, ax=ax)
-  fig.colorbar(img, ax=ax, format='%+2.0f dB')
-  ax.set(title='Mel-frequency spectrogram')
-    
-  
+import torch 
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import torchaudio.functional as F
 
 
 def pad_or_trim(array, length):
@@ -45,6 +38,8 @@ def plot_waveform(waveform, sample_rate=22050, title="Waveform", xlim=None, ylim
       axes[c].set_ylim(ylim)
   figure.suptitle(title)
   plt.show(block=False)
+  
+  return figure
 
 def plot_spectrogram(spec, sample_rate=22050, hop_length=200, title=None, ylabel='freq_bin', aspect='auto', xmax=None):
   fig, axs = plt.subplots(1, 1)
@@ -68,7 +63,7 @@ def plot_spectrogram(spec, sample_rate=22050, hop_length=200, title=None, ylabel
   fig.colorbar(im, ax=axs)
   plt.show(block=False)
 
-
+  return fig
 
 def normalized_waveform_to_bits(waveform: torch.Tensor, bits: int) -> torch.Tensor:
     """Transform waveform [-1, 1] to label [0, 2 ** bits - 1]

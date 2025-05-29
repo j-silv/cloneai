@@ -42,6 +42,19 @@ train:
   seed: 1337
   train_split: 0.5
   val_split: 0.25 # the rest goes to test
+  resample: False
+  processor: WAVERNN_CHAR_LJSPEECH
+
+  audio:
+    sr: 16000
+    frame_size_s: 0.05
+    frame_hop_s: 0.0125
+    audio_length_s: 30.0
+    n_mels: 80
+    window: hann
+    kernel_size: 5
+    min_mag: 0.01
+
   dir:
     in: data/processed/1-scott
     out: data/processed/1-scott
