@@ -44,7 +44,7 @@ load:
   resample: False
   processor: WAVERNN_CHAR_LJSPEECH
   split: [0.5, 0.25, 0.25] # train, val, test
-  batch_size: 8
+  batch_size: 12 # with 12 we are pretty much at limit of GPU memory
 
   audio:
     sr: 16000
@@ -67,9 +67,11 @@ train:
 
   tacotron2:
     enable: 1
+    load_checkpoint: "tacotron2_checkpoint.pth" 
+    save_checkpoint: "tacotron2_checkpoint.pth"
     hyperparams:
       lr: 0.001
       betas: [0.9, 0.999]
       eps: 1e-08
       weight_decay: 1e-06
-      epochs: 10
+      epochs: 100

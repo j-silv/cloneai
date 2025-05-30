@@ -108,11 +108,10 @@ class AudioDataset(Dataset):
     #       which is long adds a lot of unnecessary memory for other batches
     self.max_token_len = self.token_lens[0] # equivalently, self.tokens.shape[-1]
     
-    self.waveforms, self.waveform_lens, self.mel_lens =\
+    self.waveforms, self.waveform_lens, self.mel_lens, self.gates =\
       self.load_audio(audio_files, resample, self.audio_config)    
     
     self.raw_mels, self.mels = self.create_mel(self.waveforms, self.audio_config)
-
     
     self.tokens = self.tokens.to(device)
     self.token_lens = self.token_lens.to(device)
@@ -120,6 +119,7 @@ class AudioDataset(Dataset):
     self.waveform_lens = self.waveform_lens.to(device)
     self.mels = self.mels.to(device)
     self.mel_lens = self.mel_lens.to(device)
+    self.gates = self.gates.to(device)
     
 
   @staticmethod
@@ -163,9 +163,16 @@ class AudioDataset(Dataset):
     
     num_audio_files = len(audio_files)
 
+    # +1 because that's how the STFT calculation works
+    # tensor because this is actually an input into the model
+    assert config.audio_length_samples % config.frame_hop_samples == 0
+    num_frames = torch.tensor((config.audio_length_samples // config.frame_hop_samples) + 1)
+    
+
     audio_data = torch.zeros((num_audio_files, 1, config.audio_length_samples))
     audio_lengths = torch.zeros((num_audio_files), dtype=torch.long)
     specgram_lengths = torch.zeros((num_audio_files), dtype=torch.long)
+    gates = torch.zeros((num_audio_files, num_frames), dtype=torch.float32)
 
     for idx, audio_file in enumerate(audio_files):
         audio, native_sr = torchaudio.load(audio_file)
@@ -184,7 +191,13 @@ class AudioDataset(Dataset):
         audio = pad_or_trim(audio, config.audio_length_samples)
         audio_data[idx,...] = audio
         
-    return audio_data, audio_lengths, specgram_lengths
+        # this tells the tacotron2 to stop generating during inference whenever
+        # we exceed the actual specgram lengths (before it is 0.0 so don't stop)
+        gates[idx, specgram_lengths[idx]:] = 1.0
+        
+        
+        
+    return audio_data, audio_lengths, specgram_lengths, gates
 
 
   @staticmethod
@@ -197,11 +210,6 @@ class AudioDataset(Dataset):
       the specgram is upsampled in the last conv layer and this is all done
       automatically. we don't really need to take care of anything here
       """
-
-      # +1 because that's how the STFT calculation works
-      # tensor because this is actually an input into the model
-      assert config.audio_length_samples % config.frame_hop_samples == 0
-      num_frames = torch.tensor((config.audio_length_samples // config.frame_hop_samples) + 1)
 
       mel_transform = T.MelSpectrogram(
           sample_rate=config.sr,
@@ -258,7 +266,7 @@ class AudioDataset(Dataset):
   def __getitem__(self, idx):
     return (self.tokens[idx], self.token_lens[idx],
             self.waveforms[idx], self.waveform_lens[idx],
-            self.mels[idx], self.mel_lens[idx])
+            self.mels[idx], self.mel_lens[idx], self.gates[idx])
 
 
 def run(in_dir, out_dir, seed, resample, processor, audio_config, split, batch_size):
@@ -271,6 +279,8 @@ def run(in_dir, out_dir, seed, resample, processor, audio_config, split, batch_s
             f"{dataset.tokens.shape=}",
             f"{dataset.token_lens.shape=}",
             f"{dataset.mels.shape=}",
+            f"{dataset.gates.shape=}"
+            f"{dataset.gates[0]=}"
             f"{dataset[0][0].shape=}",
             f"{dataset[0][1]=}",
             f"{dataset[0][2].shape=}",

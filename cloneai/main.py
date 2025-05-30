@@ -56,6 +56,9 @@ if __name__ == "__main__":
     params = config["train"]
     print(params)
     if params["tacotron2"]["enable"]:
-        tacotron2.run(data, params["dir"]["out"], params["tacotron2"]["hyperparams"])
+        tacotron2.run(data, params["dir"]["out"],
+                      params["tacotron2"]["load_checkpoint"],
+                      params["tacotron2"]["save_checkpoint"],
+                      params["tacotron2"]["hyperparams"])
 
     # -------------------------------------------------------------------  
