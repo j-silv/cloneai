@@ -16,35 +16,76 @@ import numpy as np
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+from cloneai.utils import pad_or_trim
+import random
+
+
+# assert 1==0, "kernel_size: int = 5          # size of conv1D "
+
+
+#     # +1 because that's how the STFT calculation works
+#     # tensor because this is actually an input into the model
+#     assert config.audio_length_samples % config.frame_hop_samples == 0
+#     num_frames = torch.tensor((config.audio_length_samples // config.frame_hop_samples) + 1)
+    
+
+#     audio_data = torch.zeros((num_audio_files, 1, config.audio_length_samples))
+#     audio_lengths = torch.zeros((num_audio_files), dtype=torch.long)
+#     specgram_lengths = torch.zeros((num_audio_files), dtype=torch.long)
 
 
 
-# get dataset, print some info, and plot first waveform
+#         # use the full waveform shape to compute the expected number of specgrams
+#         # then update the audio_lengths to fit the pytorch API -> upsampling due to kernel
+#         specgram_lengths[idx] = (audio.shape[-1] // config.frame_hop_samples) + 1
+#         audio_lengths[idx] = (specgram_lengths[idx] - config.kernel_size + 1)*config.frame_hop_samples
 
-in_dir = "/content/drive/MyDrive/cloneai/processed/2-scott-small"
-dataset = AudioDataset(in_dir, "transcriptions.txt", resample=False)
+#         # padding is not optional because we are storing result in a tensor
+#         audio = pad_or_trim(audio, config.audio_length_samples)
+#         audio_data[idx,...] = audio
+        
 
-print(f"{dataset.num_audio_files=}",
-      f"{dataset.audio_data.shape=}",
-      f"{dataset.audio_lengths.shape=}",
-      f"{dataset.audio_data[0].shape=}",
-      f"{dataset.audio_lengths[0]=}",
-      f"{dataset.specgram_lengths[0]=}",
-      f"{dataset.sr=}",
-      f"{dataset.audio_length_samples=}",
-      f"{dataset.frame_hop_samples=}",
-      f"{dataset.frame_size_samples=}",
-      f"{dataset.mels.shape=}",
-      f"{dataset.log_mels.shape=}",
-      f"{dataset.log_mels.max()=}",
-      f"{dataset.log_mels.min()=}\n",
+# # -----------------------------------------------------------------
 
-      sep="\n")
+# class WavernnDataset(Dataset):
+#   """Light wrapper to prepare data for Tacotron2 training"""
+#   pass
 
-audio = pad_or_trim(dataset.audio_data[0], 200000)
-plot_waveform(audio,xlim=(0,25), title="Trimmed waveform")
-plot_waveform(dataset.audio_data[0],xlim=(0,25),  title="Padded waveform")
-plot_spectrogram(dataset.mels[0],  title="Melspectrogram")
+
+#       waveRNN forward pass expects the following shapes:
+#         waveform         - (n_batch, 1, (n_time - kernel_size + 1)*hop_length
+#         specgram         - (n_batch, 1, n_freq, n_time)
+#       the specgram is upsampled in the last conv layer and this is all done
+#       automatically. we don't really need to take care of anything here
+
+
+
+# # get dataset, print some info, and plot first waveform
+
+# in_dir = "/content/drive/MyDrive/cloneai/processed/2-scott-small"
+# dataset = AudioDataset(in_dir, "transcriptions.txt", resample=False)
+
+# print(f"{dataset.num_audio_files=}",
+#       f"{dataset.audio_data.shape=}",
+#       f"{dataset.audio_lengths.shape=}",
+#       f"{dataset.audio_data[0].shape=}",
+#       f"{dataset.audio_lengths[0]=}",
+#       f"{dataset.specgram_lengths[0]=}",
+#       f"{dataset.sr=}",
+#       f"{dataset.audio_length_samples=}",
+#       f"{dataset.frame_hop_samples=}",
+#       f"{dataset.frame_size_samples=}",
+#       f"{dataset.mels.shape=}",
+#       f"{dataset.log_mels.shape=}",
+#       f"{dataset.log_mels.max()=}",
+#       f"{dataset.log_mels.min()=}\n",
+
+#       sep="\n")
+
+# audio = pad_or_trim(dataset.audio_data[0], 200000)
+# plot_waveform(audio,xlim=(0,25), title="Trimmed waveform")
+# plot_waveform(dataset.audio_data[0],xlim=(0,25),  title="Padded waveform")
+# plot_spectrogram(dataset.mels[0],  title="Melspectrogram")
 
 
 

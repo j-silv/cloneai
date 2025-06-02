@@ -48,17 +48,17 @@ if __name__ == "__main__":
     params = config["load"]
     if params["enable"]:
         data = dataset.run(params["dir"]["in"], params["dir"]["out"],
-                           params["seed"], params["resample"], params["processor"],
-                           params["audio"], params["split"], params["batch_size"])
+                           params["resample"], params["audio"])
 
     # -------------------------------------------------------------------  
     
-    params = config["train"]
-    print(params)
-    if params["tacotron2"]["enable"]:
+    params = config["tacotron2"]
+    if params["enable"]:
         tacotron2.run(data, params["dir"]["out"],
-                      params["tacotron2"]["load_checkpoint"],
-                      params["tacotron2"]["save_checkpoint"],
-                      params["tacotron2"]["hyperparams"])
+                      params["seed"],
+                      params["load_checkpoint"],
+                      params["save_checkpoint"],
+                      params["hyperparams"],
+                      params["tokenizer"])
 
     # -------------------------------------------------------------------  

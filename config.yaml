@@ -40,11 +40,7 @@ data:
 
 load:
   enable: 1
-  seed: 1337
   resample: False
-  processor: WAVERNN_CHAR_LJSPEECH
-  split: [0.5, 0.25, 0.25] # train, val, test
-  batch_size: 12 # with 12 we are pretty much at limit of GPU memory
 
   audio:
     sr: 16000
@@ -53,25 +49,26 @@ load:
     audio_length_s: 30.0
     n_mels: 80
     window: hann
-    kernel_size: 5
     min_mag: 0.01
 
   dir:
     in: data/processed/1-scott
     out: data/processed/1-scott
 
-
-train:
+tacotron2:
+  enable: 1
+  load_checkpoint: "tacotron2_checkpoint.pth" 
+  save_checkpoint: "tacotron2_checkpoint.pth"
+  tokenizer: WAVERNN_CHAR_LJSPEECH
+  seed: 1337
+  hyperparams:
+    lr: 0.001
+    betas: [0.9, 0.999]
+    eps: 1e-08
+    weight_decay: 1e-06
+    epochs: 50
+    split: [0.5, 0.25, 0.25] # train, val, test
+    batch_size: 12 # with 12 we are pretty much at limit of GPU memory
+    kernel_size: 5
   dir:
     out: data/processed/1-scott
-
-  tacotron2:
-    enable: 1
-    load_checkpoint: "tacotron2_checkpoint.pth" 
-    save_checkpoint: "tacotron2_checkpoint.pth"
-    hyperparams:
-      lr: 0.001
-      betas: [0.9, 0.999]
-      eps: 1e-08
-      weight_decay: 1e-06
-      epochs: 100

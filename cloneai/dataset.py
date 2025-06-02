@@ -1,26 +1,22 @@
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
 import torchaudio
 import torchaudio.transforms as T
 import re
 import os
 from dataclasses import dataclass
-from cloneai.utils import pad_or_trim
-import os
-import random
 from cloneai.utils import plot_waveform, plot_spectrogram
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 @dataclass
 class AudioConfig:
-  sr: int = 16000
-  frame_size_s: float = 0.05
-  frame_hop_s: float = 0.0125
-  audio_length_s: float = 30.0
-  n_mels: int = 80
-  window: str = "hann"
-  kernel_size: int = 5
+  """Small dataclass which contains audio parameters for STFT"""
+  sr: int = 16000               # sampling rate
+  frame_size_s: float = 0.05    # how many seconds do we use to calculate STFT  
+  frame_hop_s: float = 0.0125   # how many seconds do we hop to calculate next STFT frame
+  audio_length_s: float = 30.0  # padded/max length of audio (for batch processing)
+  n_mels: int = 80              # how many frequency bins for mel spectrogram
+  window: str = "hann"          # which windowing function to use for calculating STFT
   min_mag: float = 0.01
 
   def __post_init__(self):
@@ -36,22 +32,25 @@ class AudioConfig:
       raise ValueError("Invalid window function for AudioConfig")
     
 
-
-class AudioDataset(Dataset):
-  """PyTorch dataset for training tacotron2
+class AudioDataset():
+  """Loads dataset for TTS training
   
   We define pytorch dataset for easy to use dataloader and for
   batch processing later. This is where we load in the dataset
-  from the transcription file and convert it to mel spectograms
-  and symbolized text.
+  from the transcription file, load the tokenized text, and convert
+  the waveforms to mel spectograms
   
-  The audio files are packaged with a PyTorch dataset wrapper: AudioDataset.
+  Note that the tacotron2 (text-to-spectrogram) and wavernn (vocoder) 
+  models require different inputs and targets. There are separate subclassed
+  pytorch datasets which will take an instance of this class as input.
+  The reasoning behind this was to decouple the audio loading and spectrogram
+  creation from the specific model requirements.
+  
   The waveform path locations are specified in a transcription file with the following format:
 
     8_56_368.wav|We start with, we rethink everything.
     8_56_243.wav|Yes, I understand that. I'm going to use the Tinder pouch...
-    8_56_331.wav|Sorry, he as in you. He as in you as in you as in Justin...
-    8_56_368.wav|We start with, we rethink everything.
+    ...
 
   Note that these audio files were transcribed with Whisper.
   Part of that flow is to pad audio samples to at least 30 seconds.
@@ -64,63 +63,21 @@ class AudioDataset(Dataset):
   
   To create the spectrograms, we leverage torchaudio's melspectogram API.
   Originally librosa was used, but to avoid extra packages I decided
-  to just stick with torchaudio.
-  
-  Note about lengths of audio and spectrograms:
-  we need to adjust the lengths of the audio and specgrams.
-  let's say we have N_valid, which is number of audio samples which are valid
-  (e.g. 282020), and N which are the total number of padded audio samples
-  (e.g. 480000). We have a fixed hop length of 200, and a kernel size of 5.
-  so we have an audio sample size of 282020.
-  And a hop length of 200, so how many of those frames can we fit? 282020 / 200 + 1 == 1411.1 == 1411
-  so how do we deal with frames that don't fit? we integer it.
-  so we need to actually determine the appropiate waveform shape which is
-  (n_time - kernel_size + 1)*hop_length to be appropiate
-  
+  to just stick with torchaudio.  
   """  
   def __init__(self,
                in_dir,                   # root directory for audio file paths and transcription file
                transcript,               # map file containing audio file paths and transcriptions
                audio_config,             # dict of options that applies to AudioConfig dataclass
                resample=False,           # if True, resample audio to specified sample rate
-               processor=None,           # text processor (tokenizer). If None, use default
+              
               ):
 
     self.audio_config = AudioConfig(**audio_config)
-
-    if processor is None or processor == "WAVERNN_CHAR_LJSPEECH":
-      processor = (
-          torchaudio
-          .pipelines
-          .TACOTRON2_WAVERNN_CHAR_LJSPEECH
-          .get_text_processor()
-      )
-    else:
-      raise ValueError("Invalid processor value for AudioDataset")
-
-    audio_files, transcriptions = self.load_text(in_dir, transcript)
-    
-    self.num_samples = len(audio_files)
-    
-    self.tokens, self.token_lens = self.text_to_tokens(transcriptions, processor)
-    
-    # TODO: we need to set this per batch -> otherwise one line in transcript
-    #       which is long adds a lot of unnecessary memory for other batches
-    self.max_token_len = self.token_lens[0] # equivalently, self.tokens.shape[-1]
-    
-    self.waveforms, self.waveform_lens, self.mel_lens, self.gates =\
-      self.load_audio(audio_files, resample, self.audio_config)    
-    
-    self.raw_mels, self.mels = self.create_mel(self.waveforms, self.audio_config)
-    
-    self.tokens = self.tokens.to(device)
-    self.token_lens = self.token_lens.to(device)
-    self.waveforms = self.waveforms.to(device)
-    self.waveform_lens = self.waveform_lens.to(device)
-    self.mels = self.mels.to(device)
-    self.mel_lens = self.mel_lens.to(device)
-    self.gates = self.gates.to(device)
-    
+    self.audio_files, self.transcriptions = self.load_text(in_dir, transcript)
+    self.num_samples = len(self.audio_files)
+    self.waveforms = self.load_audio(self.audio_files, resample, self.audio_config)    
+    self.mels = self.create_mel(self.waveforms, self.audio_config)
 
   @staticmethod
   def load_text(in_dir, transcript):
@@ -140,188 +97,82 @@ class AudioDataset(Dataset):
     return audio_files, transcriptions
 
   @staticmethod
-  def text_to_tokens(transcriptions, processor):
-    """Convert text to tokens
-    
-    tacotron2 forward pass expects the following shapes:
-      tokens               - (n_batch, max of token_lengths)
-      token_lengths        - (n_batch, )
-
-    when a list is passed in, the text is automatically zero-padded
-    to the max length of the list
-    
-    TODO: do this per batch when the model is called instead of the entire dataset
-          at initialization
-          
-    """
-    tokens, token_lengths = processor(transcriptions)  
-    return tokens, token_lengths
-
-  @staticmethod
   def load_audio(audio_files, resample, config):
     """load audio data into memory from audio_files path"""
-    
-    num_audio_files = len(audio_files)
 
-    # +1 because that's how the STFT calculation works
-    # tensor because this is actually an input into the model
-    assert config.audio_length_samples % config.frame_hop_samples == 0
-    num_frames = torch.tensor((config.audio_length_samples // config.frame_hop_samples) + 1)
-    
-
-    audio_data = torch.zeros((num_audio_files, 1, config.audio_length_samples))
-    audio_lengths = torch.zeros((num_audio_files), dtype=torch.long)
-    specgram_lengths = torch.zeros((num_audio_files), dtype=torch.long)
-    gates = torch.zeros((num_audio_files, num_frames), dtype=torch.float32)
+    audio_data = []
 
     for idx, audio_file in enumerate(audio_files):
+      
         audio, native_sr = torchaudio.load(audio_file)
-        assert audio.shape[0] == 1, "Only mono-channel audio files are supported"
+        
+        if audio.shape[0] > 1: 
+          print("Warning: did stereo to mono conversion because only single channel audio files are supported")
+          audio = torch.mean(audio, dim=0, keepdim=True)
+          
         if resample is True:
           resampler = T.Resample(native_sr, config.sr, dtype=audio.dtype)
           audio = resampler(audio)
           config.sr = native_sr
 
-        # use the full waveform shape to compute the expected number of specgrams
-        # then update the audio_lengths to fit the pytorch API -> upsampling due to kernel
-        specgram_lengths[idx] = (audio.shape[-1] // config.frame_hop_samples) + 1
-        audio_lengths[idx] = (specgram_lengths[idx] - config.kernel_size + 1)*config.frame_hop_samples
-
-        # padding is not optional because we are storing result in a tensor
-        audio = pad_or_trim(audio, config.audio_length_samples)
-        audio_data[idx,...] = audio
+        audio_data.append(audio)    
         
-        # this tells the tacotron2 to stop generating during inference whenever
-        # we exceed the actual specgram lengths (before it is 0.0 so don't stop)
-        gates[idx, specgram_lengths[idx]:] = 1.0
-        
-        
-        
-    return audio_data, audio_lengths, specgram_lengths, gates
+    return audio_data
 
 
   @staticmethod
   def create_mel(waveforms, config):
       """generate the mel spectogram from the audio file
-
-      waveRNN forward pass expects the following shapes:
-        waveform         - (n_batch, 1, (n_time - kernel_size + 1)*hop_length
-        specgram         - (n_batch, 1, n_freq, n_time)
-      the specgram is upsampled in the last conv layer and this is all done
-      automatically. we don't really need to take care of anything here
-      """
-
-      mel_transform = T.MelSpectrogram(
-          sample_rate=config.sr,
-          n_fft=config.frame_size_samples,
-          hop_length=config.frame_hop_samples,
-          n_mels=config.n_mels,
-          window_fn=config.window
-      )
-
-      mels = mel_transform(waveforms)
-
-      # as per tacotron2 paper, clip to minimum value and compress with log
-      log_mels = torch.clamp(mels, min=config.min_mag).log10()
       
-      return mels, log_mels
-
-  def split_train_val_test(self, split, seed):
-    """Generate train / validation / test split indices
-    
-    Unused since PyTorch already has a helper function
-    """
-    
-    random.seed(seed)
-    
-    assert sum(split) == 1, "Train/val/test splits must add up to 1"
-    
-    train_split, val_split, test_split = split
-    
-    samples = range(self.num_samples)
-    samples = random.sample(samples, self.num_samples)
-    
-    train_start = 0
-    train_end = int(train_split*self.num_samples) + 1
-    
-    val_start = train_end
-    val_end = val_start + int(val_split*self.num_samples) + 1
-    
-    test_start = val_end
-    test_end = val_end + int(test_split*self.num_samples) + 1
-    
-    assert test_end >= self.num_samples, "We are missing some samples when generating test split"
-    
-    train = samples[train_start:train_end]
-    val = samples[val_start:val_end]
-    test = samples[test_start:test_end]
-    
-    return train,val,test
+      note that for now, we are pre-computing the melspectrograms
+      ahead of time, and storing them as a member variable of this class.
+      alternatively, we could calculate the spectrograms on the fly
+      while collating the data
+      """
+      mels = []
+      
+      for waveform in waveforms:
+        mel_transform = T.MelSpectrogram(
+            sample_rate=config.sr,
+            n_fft=config.frame_size_samples,
+            hop_length=config.frame_hop_samples,
+            n_mels=config.n_mels,
+            window_fn=config.window
+        )
+        mels.append(mel_transform(waveform))
+        
+        print(waveform.shape, mels[-1].shape)
+      return mels
   
-
-  # functions required for pytorch
+  # not strictly necessary, but simplifies data accessing
   def __len__(self):
     return self.num_samples
 
   def __getitem__(self, idx):
-    return (self.tokens[idx], self.token_lens[idx],
-            self.waveforms[idx], self.waveform_lens[idx],
-            self.mels[idx], self.mel_lens[idx], self.gates[idx])
+    return (self.transcriptions[idx], self.waveforms[idx], self.mels[idx])
 
 
-def run(in_dir, out_dir, seed, resample, processor, audio_config, split, batch_size):
-    """Load dataset, plot waveforms/specgrams, and prepare batch data"""
-    torch.manual_seed(seed)
-    
-    dataset = AudioDataset(in_dir, "transcriptions.txt", audio_config, resample, processor)
-    
-    print(  f"{dataset.waveforms.shape=}",
-            f"{dataset.tokens.shape=}",
-            f"{dataset.token_lens.shape=}",
-            f"{dataset.mels.shape=}",
-            f"{dataset.gates.shape=}"
-            f"{dataset.gates[0]=}"
-            f"{dataset[0][0].shape=}",
-            f"{dataset[0][1]=}",
-            f"{dataset[0][2].shape=}",
-            f"{dataset[0][3]=}",
-            sep="\n")
+def run(in_dir, out_dir, resample, audio_config):
+  """Load dataset, plot waveforms/specgrams, and prepare batch data"""
+  
+  dataset = AudioDataset(in_dir, "transcriptions.txt", audio_config, resample)
+  
+  print(  f"{len(dataset)=}",
+          f"{dataset.waveforms[0].shape=}",
+          f"{dataset.transcriptions[0]=}",
+          f"{len(dataset.transcriptions[0])=}",
+          f"{dataset.mels[0].shape=}",
+          sep="\n")
 
-    outputImg = os.path.join(out_dir, "waveform.png")
-    print("Raw waveform:", outputImg)
-    plot_waveform(dataset.waveforms[0, :, :int(dataset.waveform_lens[0])], outputImg=outputImg, title="Raw waveform")
-    
-    outputImg = os.path.join(out_dir, "padded_waveform.png")
-    print("Padded waveform:", outputImg)
-    plot_waveform(dataset.waveforms[0], outputImg=outputImg, title="Padded waveform")    
-    
-    outputImg = os.path.join(out_dir, "raw_specgram.png")
-    print("Raw specgram:", outputImg) # note extra dimension due to WaveRNN.forward requirements
-    plot_spectrogram(dataset.raw_mels[0, :, :, :int(dataset.mel_lens[0])], outputImg=outputImg, title="Raw spectrogram")    
+  outputImg = os.path.join(out_dir, "waveform.png")
+  print("Raw waveform:", outputImg)
+  plot_waveform(dataset.waveforms[0], outputImg=outputImg, title="Raw waveform")
+  
+  outputImg = os.path.join(out_dir, "raw_specgram.png")
+  print("Raw specgram:", outputImg)
+  plot_spectrogram(dataset.mels[0], outputImg=outputImg, title="Raw spectrogram")    
 
-    outputImg = os.path.join(out_dir, "log_specgram.png")
-    print("Log specgram:", outputImg) # note extra dimension due to WaveRNN.forward requirements
-    plot_spectrogram(dataset.mels[0, :, :, :int(dataset.mel_lens[0])], outputImg=outputImg, logCompressed=True, title="Log spectrogram")  
-    
-
-    print(f"{split=}")
-    print(f"{batch_size=}")
-
-    train, val, test = random_split(dataset, split) # pytorch implementation vs mine
-    # train,val,test = dataset.split_train_val_test(hyperparams["split"], seed)
-    
-    # TODO: could explore shuffling data after every epoch
-    #       but then we have to be careful to avoid the enforce_sorted? not sure why this is True
-    # TODO: we have to chunk up waveforms and specgrams when passing into WaveRNN due to GPU bug
-    #       I'll have to think how I want to set this up -> I think it should be totally on the WaveRNN
-    #       side because when we do inference I'll still have to do the same thing. 
-    train = DataLoader(train, batch_size=batch_size)
-    val = DataLoader(val, batch_size=batch_size)
-    test = DataLoader(test, batch_size=batch_size)
-    
-    print(f"{next(iter(train))[0].shape}")
-    
-    return dataset, train, val, test  
+  return dataset
 
 
 
