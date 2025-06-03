@@ -48,7 +48,7 @@ if __name__ == "__main__":
     params = config["load"]
     if params["enable"]:
         data = dataset.run(params["dir"]["in"], params["dir"]["out"],
-                           params["resample"], params["audio"])
+                           params["resample"], params["audio"], params["dummy_data"])
 
     # -------------------------------------------------------------------  
     

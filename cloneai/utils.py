@@ -6,16 +6,19 @@ import matplotlib.pyplot as plt
 import torchaudio.functional as F
 
 
-def pad_or_trim(array, length):
-    """Pad or trim the audio tensor to length"""
-    if array.shape[-1] > length:
-        array = array[..., :length]
-
-    elif array.shape[-1] < length:
+def pad_tensor(array, length):
+    """Pad audio tensor to length"""
+    if array.shape[-1] < length:
         pad_width = (0, length - array.shape[-1])
         array = nn.functional.pad(array, pad_width)
-
     return array
+
+def trim_tensor(array, length):
+    """Trim audio tensor to length"""
+    if array.shape[-1] > length:
+        array = array[..., :length]
+    return array  
+
 
 def plot_waveform(waveform, sample_rate=22050, title="Waveform", xlim=None, ylim=None, outputImg=""):
   """Taken from https://pytorch.org/tutorials/beginner/audio_preprocessing_tutorial.html"""
@@ -54,9 +57,13 @@ def plot_spectrogram(spec, title="Specgram", logCompressed=False,
   ax.set_title(title or 'Spectrogram (dB)')
   ax.set_ylabel("Freq bin")
   ax.set_xlabel('Frame')
+  
+  if len(spec.shape) == 3:
+    num_channels, num_mels, num_frames = spec.shape
+    assert num_channels == 1, "Plot spectogram only supports mono-chanel"
+    spec = spec.squeeze(0)
 
-  num_channels, num_mels, num_frames = spec.shape
-  assert num_channels == 1, "Plot spectogram only supports mono-chanel"
+  num_mels, num_frames = spec.shape
 
   if logCompressed is False:
     label = "dB (0 == spec.max())"
@@ -71,7 +78,7 @@ def plot_spectrogram(spec, title="Specgram", logCompressed=False,
 
   time_axis = torch.arange(0, num_frames)
   
-  im = ax.imshow(data[0], origin='lower', aspect="auto",
+  im = ax.imshow(data, origin='lower', aspect="auto",
                   extent=[0, time_axis.max(), 0, num_mels-1])
   if xmax:
     ax.set_xlim((0, xmax))
@@ -79,6 +86,7 @@ def plot_spectrogram(spec, title="Specgram", logCompressed=False,
 
   if outputImg != "":
     fig.savefig(outputImg)
+    plt.close() # to allow for overwriting
 
   return fig, ax
 

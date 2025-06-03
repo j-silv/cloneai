@@ -41,6 +41,7 @@ data:
 load:
   enable: 1
   resample: False
+  dummy_data: True
 
   audio:
     sr: 16000
@@ -57,8 +58,8 @@ load:
 
 tacotron2:
   enable: 1
-  load_checkpoint: "tacotron2_checkpoint.pth" 
-  save_checkpoint: "tacotron2_checkpoint.pth"
+  load_checkpoint: #"tacotron2_checkpoint.pth" 
+  save_checkpoint: #"tacotron2_checkpoint.pth"
   tokenizer: WAVERNN_CHAR_LJSPEECH
   seed: 1337
   hyperparams:
@@ -66,7 +67,7 @@ tacotron2:
     betas: [0.9, 0.999]
     eps: 1e-08
     weight_decay: 1e-06
-    epochs: 50
+    epochs: 15
     split: [0.5, 0.25, 0.25] # train, val, test
     batch_size: 12 # with 12 we are pretty much at limit of GPU memory
     kernel_size: 5

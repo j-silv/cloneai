@@ -7,13 +7,6 @@ import os
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# TODO:
-
-# we are getting some audio files which are longer than 30 seconds ->
-# if so we need to pad to less for whisper or not have that many seconds in the first place
-# (transcription, pad waveform to less than 30 seconds. which we do actually)")
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 class Tacotron2Dataset(Dataset):
     """PyTorch wrapper for Tacotron2 data so we can use DataLoader"""
@@ -58,15 +51,14 @@ def collate_fn_wrapper(tokenizer, min_mag):
         # zero-pad mel spectrograms to max length
         #######################################
         
-        # hard-coded now, but this will step GPU usage from blowing up
-        max_mel_len = min(2401, torch.max(mel_lens).item()) 
+        max_mel_len = torch.max(mel_lens).item()
         num_freq_bins = mels[0].shape[0]
         padded_mels = torch.zeros(batch_size ,num_freq_bins, max_mel_len)
         
         for idx, mel in enumerate(mels):
             # I don't think there is a better way to
             # do this since mels are packed in a list
-            padded_mels[idx, :, :min(2401, mel.shape[-1])] = mel[:, :min(2401, mel.shape[-1])]
+            padded_mels[idx, :, :mel.shape[-1]] = mel[:, :mel.shape[-1]]
         
         # print(f"{padded_mels.shape=}, {max_mel_len=}, {num_freq_bins=}, {mel_lens.shape=}")
         
@@ -201,7 +193,22 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
             gates = gates.to(device)
             
             mel_prenet, mel_postnet, gate_out, _ = model(tokens, token_lens, mels, mel_lens)
+            
+            # outputImg = os.path.join(out_dir, "golden_train_specgram.png")
+            # print("Golden train specgram:", outputImg)
+            # plot_spectrogram(mels[0], outputImg=outputImg, logCompressed=True, title="Golden train spectrogram")   
+            
+            # outputImg = os.path.join(out_dir, "predicted_train_prenet_specgram.png")
+            # print("Predicted train prenet specgram:", outputImg)
+            # plot_spectrogram(mel_prenet[0], outputImg=outputImg, logCompressed=True, title="Predicted train prenet spectrogram")    
 
+            # outputImg = os.path.join(out_dir, "predicted_train_postnet_specgram.png")
+            # print("Predicted train postnet specgram:", outputImg)
+            # plot_spectrogram(mel_postnet[0], outputImg=outputImg, logCompressed=True, title="Predicted train postnet spectrogram")    
+           
+
+            # TODO: only calculate the loss for the valid parts of mels, not the entire mels?
+            # plot the spectrogram input directly to this and compare each part
             loss = mse_loss(mel_prenet, mels)
             loss += mse_loss(mel_postnet, mels)
             loss += bce_loss(gate_out, gates)
@@ -241,14 +248,18 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
     # compare spectrogram output with golden
     # compare against a sample that the tacotron2 was trained on
     
-    return
-    
     model.eval()
     
     train_batch_sample = next(iter(train))
+    sample = 0
     
-    test_token, test_token_len = train_batch_sample[0][:1], train_batch_sample[1][:1]
-    golden_spec, golden_spec_len = train_batch_sample[2][:1], train_batch_sample[3][:1]
+    test_token, test_token_len = train_batch_sample[0][sample:sample+1], train_batch_sample[1][sample:sample+1]
+    golden_spec, golden_spec_len = train_batch_sample[2][sample:sample+1], train_batch_sample[3][sample:sample+1]
+    
+    golden_spec = golden_spec.unsqueeze(1)
+    
+    test_token = test_token.to(device)
+    test_token_len = test_token_len.to(device)
   
     print("Testing 1st batch sample for training data")
     print("transcription:")
@@ -256,7 +267,7 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
  
     outputImg = os.path.join(out_dir, "golden_log_specgram.png")
     print("Golden log specgram:", outputImg)
-    plot_spectrogram(golden_spec[0, :, :int(golden_spec_len[0])], outputImg=outputImg, logCompressed=True, title="Golden log spectrogram") 
+    plot_spectrogram(golden_spec[0, :, :, :int(golden_spec_len[0])], outputImg=outputImg, logCompressed=True, title="Golden log spectrogram") 
     
     with torch.inference_mode():
         spec, spec_len, _ = model.infer(test_token, test_token_len) 
@@ -265,7 +276,7 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
     outputImg = os.path.join(out_dir, "predicted_log_specgram.png")
     print("Predicted log specgram:", outputImg)
     spec = spec.unsqueeze(1)
-    plot_spectrogram(spec[0, :, :int(spec_len[0])], outputImg=outputImg, logCompressed=True, title="Predicted log spectrogram")  
+    plot_spectrogram(spec[0, :, :, :int(spec_len[0])], outputImg=outputImg, logCompressed=True, title="Predicted log spectrogram")  
     
     
     
