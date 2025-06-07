@@ -1,167 +1,240 @@
-# Python packages
-
-import re
-import os
+import random
 import torch
 from torch import nn
-from torch.utils.data import Dataset, DataLoader, random_split, Subset
 import torchaudio
-from torchaudio.models.wavernn import WaveRNN
-import torchaudio.functional as F
 import torchaudio.transforms as T
-import matplotlib.pyplot as plt
-import numpy as np
-
+from cloneai.utils import plot_spectrogram, plot_waveform, normalized_waveform_to_bits, bits_to_normalized_waveform
+from torch.utils.data import Dataset, DataLoader, random_split
+from torchaudio.prototype.functional import oscillator_bank
+import os
+from torchaudio.models.wavernn import WaveRNN
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-from cloneai.utils import pad_or_trim
-import random
+class WaveRNNDataset(Dataset):
+    """PyTorch wrapper for WaveRNN data so we can use DataLoader"""
+
+    def __init__(self, data, dummy_data=False):
+        if dummy_data:
+          self.data = []
+
+          config = dict(
+              sample_rate = 22050,
+              n_fft = int(0.05*22050),
+              hop_length = int(0.0125*22050),
+              n_mels = 80,
+              window_fn = torch.hann_window
+          )
+          print(config)
+
+          transform = T.MelSpectrogram(**config)
+
+          for i in range(10):
+            # adopted from https://docs.pytorch.org/audio/stable/tutorials/oscillator_tutorial.html?highlight=sine+wave
+            # generates a staircase frequency plot
+            num_samples = random.randint(50000, 480000)
+            num_steps = 10
+            f0 = 2000
+            fmod = 2000
+            mod_type = "staircase" # or triangle
+
+            if mod_type == "staircase":
+              freq = torch.linspace(f0-fmod, f0+fmod, num_steps)
+              freq = freq.repeat_interleave(num_samples//num_steps)
+              freq = freq[freq > 0.0].unsqueeze(-1) # if we can't fit interleave then we will have 0s
+              num_samples = freq.shape[0]
+            elif mod_type == "triangle":
+              freq = torch.linspace(f0-fmod, f0+fmod, num_samples).unsqueeze(-1)
+            else:
+              raise ValueError("Not a valid mod_type:", mod_type)
+
+            amp = torch.ones((num_samples, 1))
+            waveform = oscillator_bank(freq, amp, sample_rate=config["sample_rate"])
+
+            mel = transform(waveform)
+            print(waveform.shape, mel.shape)
+            self.data.append((torch.randint(0, 20, (1, 20)), waveform, mel))
+        else:
+          self.data = data
 
 
-# assert 1==0, "kernel_size: int = 5          # size of conv1D "
+        self.num_samples = len(self.data)
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        _, waveform, mel = self.data[idx]
+        return (waveform, mel)
 
 
-#     # +1 because that's how the STFT calculation works
-#     # tensor because this is actually an input into the model
-#     assert config.audio_length_samples % config.frame_hop_samples == 0
-#     num_frames = torch.tensor((config.audio_length_samples // config.frame_hop_samples) + 1)
-    
+def collate_fn_wrapper(frames_per_forward, hop_length, kernel_size, min_mag):
+  """Wrapper around collate because we need additional arguments"""
+  def collate_fn(batch):
+    """Randomly chunk max frames from batch for input to WaveRNN
 
-#     audio_data = torch.zeros((num_audio_files, 1, config.audio_length_samples))
-#     audio_lengths = torch.zeros((num_audio_files), dtype=torch.long)
-#     specgram_lengths = torch.zeros((num_audio_files), dtype=torch.long)
+    Taken from PyTorch's example pipeline_wavernn
+    """
 
+    waveforms = []
+    mels = []
 
+    #######################################
+    # unpack batch into waveform and mels
+    #######################################
 
-#         # use the full waveform shape to compute the expected number of specgrams
-#         # then update the audio_lengths to fit the pytorch API -> upsampling due to kernel
-#         specgram_lengths[idx] = (audio.shape[-1] // config.frame_hop_samples) + 1
-#         audio_lengths[idx] = (specgram_lengths[idx] - config.kernel_size + 1)*config.frame_hop_samples
+    for idx, (waveform, mel) in enumerate(batch):
+        assert mel.shape[-1] >= frames_per_forward, "Not enough frames per forward"
 
-#         # padding is not optional because we are storing result in a tensor
-#         audio = pad_or_trim(audio, config.audio_length_samples)
-#         audio_data[idx,...] = audio
-        
+        # as per tacotron2 paper, clip to minimum value and compress with log
+        mel = torch.clamp(mel, min=min_mag).log10()
 
-# # -----------------------------------------------------------------
+        mels.append(mel)
+        waveforms.append(waveform)
 
-# class WavernnDataset(Dataset):
-#   """Light wrapper to prepare data for Tacotron2 training"""
-#   pass
+    #######################################
+    # prepare slicing
+    #######################################
 
+    pad = (kernel_size - 1) // 2
 
-#       waveRNN forward pass expects the following shapes:
-#         waveform         - (n_batch, 1, (n_time - kernel_size + 1)*hop_length
-#         specgram         - (n_batch, 1, n_freq, n_time)
-#       the specgram is upsampled in the last conv layer and this is all done
-#       automatically. we don't really need to take care of anything here
+    # input waveform length
+    wave_length = hop_length * frames_per_forward
+    # input spectrogram length
+    spec_length = frames_per_forward + pad * 2
 
+    # max start postion in spectrogram
+    max_offsets = [mel.shape[-1] - (spec_length + pad * 2) for mel in mels]
 
+    # random start postion in spectrogram
+    spec_offsets = [random.randint(0, offset) for offset in max_offsets]
+    # random start postion in waveform
+    wave_offsets = [(offset + pad) * hop_length for offset in spec_offsets]
 
-# # get dataset, print some info, and plot first waveform
+    waveform_combine = [waveform[offset : offset + wave_length + 1] for waveform, offset in zip(waveforms, wave_offsets)]
+    specgram = [mel[:, offset : offset + spec_length] for mel, offset in zip(mels, spec_offsets)]
 
-# in_dir = "/content/drive/MyDrive/cloneai/processed/2-scott-small"
-# dataset = AudioDataset(in_dir, "transcriptions.txt", resample=False)
+    specgram = torch.stack(specgram)
+    waveform_combine = torch.stack(waveform_combine)
 
-# print(f"{dataset.num_audio_files=}",
-#       f"{dataset.audio_data.shape=}",
-#       f"{dataset.audio_lengths.shape=}",
-#       f"{dataset.audio_data[0].shape=}",
-#       f"{dataset.audio_lengths[0]=}",
-#       f"{dataset.specgram_lengths[0]=}",
-#       f"{dataset.sr=}",
-#       f"{dataset.audio_length_samples=}",
-#       f"{dataset.frame_hop_samples=}",
-#       f"{dataset.frame_size_samples=}",
-#       f"{dataset.mels.shape=}",
-#       f"{dataset.log_mels.shape=}",
-#       f"{dataset.log_mels.max()=}",
-#       f"{dataset.log_mels.min()=}\n",
+    waveform = waveform_combine[:, :wave_length]
+    target = waveform_combine[:, 1:]
 
-#       sep="\n")
+    target = normalized_waveform_to_bits(target, 8)
 
-# audio = pad_or_trim(dataset.audio_data[0], 200000)
-# plot_waveform(audio,xlim=(0,25), title="Trimmed waveform")
-# plot_waveform(dataset.audio_data[0],xlim=(0,25),  title="Padded waveform")
-# plot_spectrogram(dataset.mels[0],  title="Melspectrogram")
+    # print(f"{max_offsets=}")
+    # print(f"{spec_offsets=}")
+    # print(f"{wave_offsets=}")
 
+    #######################################
+    # sanity check
+    #######################################
 
+    # plot_waveform(waveform[0], xlim=(0, 0.01))
+    # plot_waveform(target[0], xlim=(1.01, 1.02), ylim=(0, 255))
+    # plot_spectrogram(mels[0], logCompressed=True)[0]
+    # plot_spectrogram(specgram[0], logCompressed=True)[0]
 
+    return waveform.unsqueeze(1), specgram.unsqueeze(1), target.unsqueeze(1)
 
-
-###########################################################################
-
-
-# try training
-
-bits = 8
-epochs = 10
-criterion = nn.CrossEntropyLoss()
-lr = 0.001
-betas = (0.9, 0.999)
-eps = 1e-08
-weight_decay = 1e-06
+  return collate_fn
 
 
 
-model = WaveRNN(
-    upsample_scales=[5, 5, 8], # gives hop_length samples of 200
-    n_classes=2**bits, # 8 bits
-    hop_length=dataset.frame_hop_samples, # by default hop_length == 200
-    n_freq=dataset.n_mels,
-    kernel_size=dataset.kernel_size
-)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=betas,
-                             eps=eps, weight_decay=weight_decay)
+#######################################################################
 
-
-model = model.to(device)
-model.train()
-
-
-# Training loop
-
-for epoch in range(epochs):
-  print(f"Epoch {epoch+1}\n-------------------------------")
-
-  # note that the torchaudio has a bg_iterator which I can't find any docs on
-  # but there is this discussion thread:
-  # https://discuss.pytorch.org/t/audio-dataset-load-large-file-into-memory-in-background/85943/2
-  for waveform, specgram in dataset:
+def run(data):
 
 
 
-    waveform = waveform[:,0:479400] # hacky way to make sure alignment
+  batch_size = 4
+  frames_per_forward = 100 # number of frames to feed into WaveRNN
+  sr = 22050
+  min_mag = 0.01
+  hop_length = int(0.0125*sr)
+  kernel_size = 5 # first conv1d kernel size reduces spectrogram by kernel_size-1 samples
+  dataset = WaveRNNDataset(None, True)
 
-    target = normalized_waveform_to_bits(waveform, bits)
+  train = DataLoader(dataset,
+                    batch_size=batch_size,
+                    collate_fn=collate_fn_wrapper(frames_per_forward, hop_length, kernel_size, min_mag))
 
-    waveform = torch.unsqueeze(waveform, 0).to(device)
-    specgram = specgram.unsqueeze(0).to(device)
-    target = target.to(device)
+  elem = next(iter(train))
+
+  ##############################################################################
+
+  bits = 8
+  epochs = 10
+  criterion = nn.CrossEntropyLoss()
+  lr = 0.001
+  betas = (0.9, 0.999)
+  eps = 1e-08
+  weight_decay = 1e-06
 
 
-    # print(waveform.device, target.device, specgram.device)
-    # print(waveform.shape, specgram.shape, target.shape)
-    output = model(waveform, specgram)
+  model = WaveRNN(
+      upsample_scales=[5, 5, 11], # gives hop_length samples of 275
+      n_classes=2**bits, # 8 bits
+      hop_length=275, # by default hop_length == 200
+      n_freq=80,
+      kernel_size=5
+  )
+
+  optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=betas,
+                              eps=eps, weight_decay=weight_decay)
+  model = model.to(device)
+  model.train()
+
+  print("")
+
+  ########################################
+
+  # Training loop
+
+  for epoch in range(epochs):
+    for waveform, specgram, target in train:
+
+      waveform = waveform.to(device)
+      specgram = specgram.to(device)
+      target = target.to(device)
+
+      output = model(waveform, specgram)
+
+      # output.shape == (N, time, 256) -> need to transpose for CrossEntropyLoss
+      # target.shape == (N, time)
+      output, target = output.squeeze(1), target.squeeze(1)
+      output = output.transpose(1, 2)
+      target = target.long() # has to be long for CrossEntropyLoss
+
+      loss = criterion(output, target)
+
+      loss.backward()
+      optimizer.step()
+      optimizer.zero_grad()
+
+      if epoch % 1 == 0:
+          loss = loss.item()
+          print(f"Epoch {epoch+1} | loss: {loss:>7f}")
 
 
-    output, target = output.squeeze(1), target.squeeze(1)
-
-    loss = criterion(output, target)
+  print("Done!")
 
 
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
 
-    # if epoch % 10 == 0:
-    #     loss = loss.item()
-    #     print(f"loss: {loss:>7f}")
+  ####################################
 
-    break
-  break
+  probs = torch.softmax(output.transpose(1, 2), dim=-1)
+  probs = probs.view(-1, 256)
+  indices = torch.multinomial(probs, num_samples=1)
+  indices = indices.view(target.shape[0], -1)
 
-print("Done!")
+  # predicted = bits_to_normalized_waveform(indices, 8)
+
+  plot_waveform(target[0], xlim=(0, 0.001), ylim=(0, 255))
+  plot_waveform(indices[0], xlim=(0, 0.001), ylim=(0, 255))
+
+
+  plot_waveform(target[0], xlim=(1.0, 1.001), ylim=(0, 255))
+  plot_waveform(indices[0], xlim=(1.0, 1.001), ylim=(0, 255))

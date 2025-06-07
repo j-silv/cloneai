@@ -2,8 +2,9 @@ import yaml
 import cloneai.extract as extract
 import cloneai.split as split
 import cloneai.transcribe as transcribe
-import cloneai.tacotron2 as tacotron2
 import cloneai.dataset as dataset
+import cloneai.tacotron2 as tacotron2
+import cloneai.wavernn as wavernn
 
 
 def load_config(filename):
@@ -60,5 +61,11 @@ if __name__ == "__main__":
                       params["save_checkpoint"],
                       params["hyperparams"],
                       params["tokenizer"])
+
+    # -------------------------------------------------------------------  
+    
+    params = config["wavernn"]
+    if params["enable"]:
+        wavernn.run(data)
 
     # -------------------------------------------------------------------  

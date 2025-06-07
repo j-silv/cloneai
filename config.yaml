@@ -57,7 +57,7 @@ load:
     out: data/processed/1-scott
 
 tacotron2:
-  enable: 1
+  enable: 0
   load_checkpoint: #"tacotron2_checkpoint.pth" 
   save_checkpoint: #"tacotron2_checkpoint.pth"
   tokenizer: WAVERNN_CHAR_LJSPEECH
@@ -73,3 +73,6 @@ tacotron2:
     kernel_size: 5
   dir:
     out: data/processed/1-scott
+
+wavernn:
+  enable: 1
