@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torchaudio
-from cloneai.utils import plot_spectrogram
+from cloneai.utils import plot_spectrogram, pad_tensor, trim_tensor
 from torch.utils.data import Dataset, DataLoader, random_split
 import os
 
@@ -149,7 +149,6 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
     # TODO: load Tacotron2 explicitly so that we can set
     #       some of the parameters like decoder_max_step
     model = torchaudio.pipelines.TACOTRON2_WAVERNN_CHAR_LJSPEECH.get_tacotron2()
-    model.train()
     model = model.to(device)
     
     mse_loss = nn.MSELoss()
@@ -178,10 +177,11 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
                 
     #######################################
     # Training loop
-    #######################################
-    
-    loss = 0.0
+    #######################################  
     for epoch in range(hyperparams["epochs"]):
+        model.train()
+        
+        loss = 0.0
         data_samples_seen = 0
         for batch, (tokens, token_lens, mels, mel_lens, gates) in enumerate(train):
             data_samples_seen += tokens.shape[0]
@@ -194,21 +194,6 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
             
             mel_prenet, mel_postnet, gate_out, _ = model(tokens, token_lens, mels, mel_lens)
             
-            # outputImg = os.path.join(out_dir, "golden_train_specgram.png")
-            # print("Golden train specgram:", outputImg)
-            # plot_spectrogram(mels[0], outputImg=outputImg, logCompressed=True, title="Golden train spectrogram")   
-            
-            # outputImg = os.path.join(out_dir, "predicted_train_prenet_specgram.png")
-            # print("Predicted train prenet specgram:", outputImg)
-            # plot_spectrogram(mel_prenet[0], outputImg=outputImg, logCompressed=True, title="Predicted train prenet spectrogram")    
-
-            # outputImg = os.path.join(out_dir, "predicted_train_postnet_specgram.png")
-            # print("Predicted train postnet specgram:", outputImg)
-            # plot_spectrogram(mel_postnet[0], outputImg=outputImg, logCompressed=True, title="Predicted train postnet spectrogram")    
-           
-
-            # TODO: only calculate the loss for the valid parts of mels, not the entire mels?
-            # plot the spectrogram input directly to this and compare each part
             loss = mse_loss(mel_prenet, mels)
             loss += mse_loss(mel_postnet, mels)
             loss += bce_loss(gate_out, gates)
@@ -219,8 +204,71 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
 
             if epoch % 1 == 0:
                 loss = loss.item()
-                print(f"Epoch {epoch+1} | batch {batch} | samples {data_samples_seen}/{len(train_split)} | loss: {loss:>7f}")
+                print(f"Training | Epoch {epoch+1} | batch {batch} | samples {data_samples_seen}/{len(train_split)} | loss: {loss:>7f}")
 
+        ###########################################################
+        # validation loss
+        ###########################################################
+        model.eval()
+
+        with torch.inference_mode():
+            loss = 0.0
+            data_samples_seen = 0
+            
+            # Validation with teacher forcing mode
+            for batch, (tokens, token_lens, mels, mel_lens, gates) in enumerate(val):
+                data_samples_seen += tokens.shape[0]
+                
+                tokens = tokens.to(device)
+                token_lens = token_lens.to(device)
+                mels = mels.to(device)
+                mel_lens = mel_lens.to(device)
+                gates = gates.to(device)
+                
+                mel_prenet, mel_postnet, gate_out, _ = model(tokens, token_lens, mels, mel_lens)
+                
+                loss = mse_loss(mel_prenet, mels)
+                loss += mse_loss(mel_postnet, mels)
+                loss += bce_loss(gate_out, gates)
+
+                loss = loss.item()
+                print(f"Validation (teacher-forcing) | Epoch {epoch+1} | batch {batch} | samples {data_samples_seen}/{len(val_split)} | loss: {loss:>7f}")
+
+            # validation with inference
+            loss = 0.0
+            data_samples_seen = 0
+            for batch, (tokens, token_lens, mels, mel_lens, gates) in enumerate(val):
+                data_samples_seen += tokens.shape[0]
+                
+                tokens = tokens.to(device)
+                token_lens = token_lens.to(device)
+                mels = mels.to(device)
+                mel_lens = mel_lens.to(device)
+                gates = gates.to(device)
+                
+                predicted_mel, predicted_mel_lens, _ = model.infer(tokens, token_lens)
+                
+                # TODO: -> we are assuming that the predicted mel is padded with zeros
+                # after the predicted_mel_lens. If so, then this is valid because 
+                # the extra zeros don't add to the loss, but we still account for 
+                # the uneven lengths. I'll have to sanity check this...
+                if predicted_mel.shape[-1] < mels.shape[-1]:
+                    predicted_mel = pad_tensor(predicted_mel, mels.shape[-1])
+                elif predicted_mel.shape[-1] > mels.shape[-1]:
+                    mels = pad_tensor(mels, predicted_mel.shape[-1])
+                    
+                loss = mse_loss(predicted_mel, mels)
+                loss = loss.item()
+                print(f"Validation (inference) | Epoch {epoch+1} | batch {batch} | samples {data_samples_seen}/{len(val_split)} | loss: {loss:>7f}")
+
+            outputImg = os.path.join(out_dir, "golden_train_specgram.png")
+            print("Golden train specgram:", outputImg)
+            plot_spectrogram(mels[0], outputImg=outputImg, logCompressed=True, title="Golden train spectrogram")   
+            
+            outputImg = os.path.join(out_dir, "predicted_val_inference_specgram.png")
+            print("Predicted val inference specgram:", outputImg)
+            plot_spectrogram(predicted_mel[0], outputImg=outputImg, logCompressed=True, title="Predicted val inference specgram")    
+        
     print("Done!")
     
     
@@ -241,42 +289,7 @@ def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperpa
         torch.save(state, checkpoint)
       
     
-    #######################################
-    # sanity check
-    #######################################
-    
-    # compare spectrogram output with golden
-    # compare against a sample that the tacotron2 was trained on
-    
-    model.eval()
-    
-    train_batch_sample = next(iter(train))
-    sample = 0
-    
-    test_token, test_token_len = train_batch_sample[0][sample:sample+1], train_batch_sample[1][sample:sample+1]
-    golden_spec, golden_spec_len = train_batch_sample[2][sample:sample+1], train_batch_sample[3][sample:sample+1]
-    
-    golden_spec = golden_spec.unsqueeze(1)
-    
-    test_token = test_token.to(device)
-    test_token_len = test_token_len.to(device)
-  
-    print("Testing 1st batch sample for training data")
-    print("transcription:")
-    print(f"{''.join([tokenizer.tokens[i] for i in test_token[0, : test_token_len[0]]])}")
- 
-    outputImg = os.path.join(out_dir, "golden_log_specgram.png")
-    print("Golden log specgram:", outputImg)
-    plot_spectrogram(golden_spec[0, :, :, :int(golden_spec_len[0])], outputImg=outputImg, logCompressed=True, title="Golden log spectrogram") 
-    
-    with torch.inference_mode():
-        spec, spec_len, _ = model.infer(test_token, test_token_len) 
-    
-    print(f"{spec.shape=}, {spec_len.shape=}")
-    outputImg = os.path.join(out_dir, "predicted_log_specgram.png")
-    print("Predicted log specgram:", outputImg)
-    spec = spec.unsqueeze(1)
-    plot_spectrogram(spec[0, :, :, :int(spec_len[0])], outputImg=outputImg, logCompressed=True, title="Predicted log spectrogram")  
+
     
     
     
