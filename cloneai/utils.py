@@ -1,6 +1,5 @@
-
 # Utility functions
-import torch 
+import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import torchaudio.functional as F
@@ -17,21 +16,26 @@ def trim_tensor(array, length):
     """Trim audio tensor to length"""
     if array.shape[-1] > length:
         array = array[..., :length]
-    return array  
+    return array
 
 
 def plot_waveform(waveform, sample_rate=22050, title="Waveform", xlim=None, ylim=None, outputImg=""):
   """Taken from https://pytorch.org/tutorials/beginner/audio_preprocessing_tutorial.html"""
   waveform = waveform.cpu().detach().numpy()
 
-  num_channels, num_frames = waveform.shape
-  
+  if len(waveform.shape) == 2:
+    num_channels, num_frames = waveform.shape
+    assert num_channels == 1, "Plot waveform only supports mono-chanel"
+    waveform = waveform.squeeze(0)
+
+  num_frames = waveform.shape[0]
+
   time_axis = torch.arange(0, num_frames) / sample_rate
   fig, ax = plt.subplots() # only plot one channel
 
-  ax.plot(time_axis, waveform[0], linewidth=1)
+  ax.plot(time_axis, waveform, linewidth=1)
   ax.grid(True)
-  
+
   if xlim is None:
     xlim = (0, time_axis[-1])
   if ylim is None:
@@ -39,7 +43,7 @@ def plot_waveform(waveform, sample_rate=22050, title="Waveform", xlim=None, ylim
 
   ax.set_xlim(xlim)
   ax.set_ylim(ylim)
-  
+
   ax.set_xlabel("Time (s)")
   ax.set_ylabel("Amplitude")
 
@@ -47,7 +51,7 @@ def plot_waveform(waveform, sample_rate=22050, title="Waveform", xlim=None, ylim
 
   if outputImg != "":
     fig.savefig(outputImg)
-    
+
   return fig, ax
 
 def plot_spectrogram(spec, title="Specgram", logCompressed=False,
@@ -57,7 +61,7 @@ def plot_spectrogram(spec, title="Specgram", logCompressed=False,
   ax.set_title(title or 'Spectrogram (dB)')
   ax.set_ylabel("Freq bin")
   ax.set_xlabel('Frame')
-  
+
   if len(spec.shape) == 3:
     num_channels, num_mels, num_frames = spec.shape
     assert num_channels == 1, "Plot spectogram only supports mono-chanel"
@@ -68,7 +72,7 @@ def plot_spectrogram(spec, title="Specgram", logCompressed=False,
   if logCompressed is False:
     label = "dB (0 == spec.max())"
     amin = 0.0 # minimum power level
-    multiplier = 10.0 # input is power 
+    multiplier = 10.0 # input is power
     db_multiplier = torch.log10(spec.max()) # spec.max() is the ref value and dB values are scaled relative to spec.max()
     data = F.amplitude_to_DB(spec, multiplier, amin, db_multiplier) # supports channel dimension
   else:
@@ -77,7 +81,7 @@ def plot_spectrogram(spec, title="Specgram", logCompressed=False,
     data = spec
 
   time_axis = torch.arange(0, num_frames)
-  
+
   im = ax.imshow(data, origin='lower', aspect="auto",
                   extent=[0, time_axis.max(), 0, num_mels-1])
   if xmax:
@@ -100,6 +104,11 @@ def normalized_waveform_to_bits(waveform: torch.Tensor, bits: int) -> torch.Tens
     assert abs(waveform).max() <= 1.0
     waveform = (waveform + 1.0) * (2**bits - 1) / 2
     return torch.clamp(waveform, 0, 2**bits - 1).int()
+
+def bits_to_normalized_waveform(label: torch.Tensor, bits: int) -> torch.Tensor:
+    r"""Transform label [0, 2 ** bits - 1] to waveform [-1, 1]"""
+
+    return 2 * label / (2**bits - 1.0) - 1.0
 
 
 def count_parameters(model):
