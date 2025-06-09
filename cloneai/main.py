@@ -2,7 +2,7 @@ import yaml
 import cloneai.extract as extract
 import cloneai.split as split
 import cloneai.transcribe as transcribe
-import cloneai.dataset as dataset
+import cloneai.load as load
 import cloneai.tacotron2 as tacotron2
 import cloneai.wavernn as wavernn
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     
     params = config["load"]
     if params["enable"]:
-        data = dataset.run(params["dir"]["in"], params["dir"]["out"],
+        data = load.run(params["dir"]["in"], params["dir"]["out"],
                            params["resample"], params["audio"], params["dummy_data"])
 
     # -------------------------------------------------------------------  
