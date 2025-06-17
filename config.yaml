@@ -75,4 +75,4 @@ tacotron2:
     out: data/processed/1-scott
 
 wavernn:
-  enable: 1
+  enable: 0

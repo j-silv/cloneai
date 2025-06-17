@@ -1,12 +1,8 @@
 import random
 import torch
 from torch import nn
-import torchaudio
-import torchaudio.transforms as T
 from cloneai.utils import plot_spectrogram, plot_waveform, normalized_waveform_to_bits, bits_to_normalized_waveform
 from torch.utils.data import Dataset, DataLoader, random_split
-from torchaudio.prototype.functional import oscillator_bank
-import os
 from torchaudio.models.wavernn import WaveRNN
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -15,56 +11,15 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class WaveRNNDataset(Dataset):
     """PyTorch wrapper for WaveRNN data so we can use DataLoader"""
 
-    def __init__(self, data, dummy_data=False):
-        if dummy_data:
-          self.data = []
-
-          config = dict(
-              sample_rate = 22050,
-              n_fft = int(0.05*22050),
-              hop_length = int(0.0125*22050),
-              n_mels = 80,
-              window_fn = torch.hann_window
-          )
-          print(config)
-
-          transform = T.MelSpectrogram(**config)
-
-          for i in range(10):
-            # adopted from https://docs.pytorch.org/audio/stable/tutorials/oscillator_tutorial.html?highlight=sine+wave
-            # generates a staircase frequency plot
-            num_samples = random.randint(50000, 480000)
-            num_steps = 10
-            f0 = 2000
-            fmod = 2000
-            mod_type = "staircase" # or triangle
-
-            if mod_type == "staircase":
-              freq = torch.linspace(f0-fmod, f0+fmod, num_steps)
-              freq = freq.repeat_interleave(num_samples//num_steps)
-              freq = freq[freq > 0.0].unsqueeze(-1) # if we can't fit interleave then we will have 0s
-              num_samples = freq.shape[0]
-            elif mod_type == "triangle":
-              freq = torch.linspace(f0-fmod, f0+fmod, num_samples).unsqueeze(-1)
-            else:
-              raise ValueError("Not a valid mod_type:", mod_type)
-
-            amp = torch.ones((num_samples, 1))
-            waveform = oscillator_bank(freq, amp, sample_rate=config["sample_rate"])
-
-            mel = transform(waveform)
-            print(waveform.shape, mel.shape)
-            self.data.append((torch.randint(0, 20, (1, 20)), waveform, mel))
-        else:
-          self.data = data
-
-
-        self.num_samples = len(self.data)
+    def __init__(self, data):
+        self.data = data
+        self.num_samples = len(data)
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
+        # texts are unnecessary for wavernn training
         _, waveform, mel = self.data[idx]
         return (waveform, mel)
 

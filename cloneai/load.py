@@ -4,7 +4,7 @@ import torchaudio.transforms as T
 import re
 import os
 from dataclasses import dataclass
-from cloneai.utils import plot_waveform, plot_spectrogram, trim_tensor
+from cloneai.utils import save_waveform, save_spectrogram, create_dummy_data, trim_tensor
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -70,14 +70,19 @@ class AudioDataset():
                transcript,               # map file containing audio file paths and transcriptions
                audio_config,             # dict of options that applies to AudioConfig dataclass
                resample=False,           # if True, resample audio to specified sample rate
-               dummy_data=False,         # if True, generate a 1 kHz sine-wave as audio data to test pipeline
+               dummy_data=False,         # if True, generate dummy text, audio, and spectrogram data to test pipeline
               ):
 
     self.audio_config = AudioConfig(**audio_config)
-    self.audio_files, self.transcriptions = self.load_text(in_dir, transcript)
-    self.num_samples = len(self.audio_files)
-    self.waveforms = self.load_audio(self.audio_files, resample, self.audio_config, dummy_data)    
-    self.mels = self.create_mel(self.waveforms, self.audio_config)
+    
+    if dummy_data is True:
+      self.transcriptions, self.waveforms, self.mels = create_dummy_data(self.audio_config)
+    else:
+      self.audio_files, self.transcriptions = self.load_text(in_dir, transcript)
+      self.waveforms = self.load_audio(self.audio_files, resample, self.audio_config)    
+      self.mels = self.create_mel(self.waveforms, self.audio_config)
+      
+    self.num_samples = len(self.waveforms)
 
   @staticmethod
   def load_text(in_dir, transcript):
@@ -97,37 +102,27 @@ class AudioDataset():
     return audio_files, transcriptions
 
   @staticmethod
-  def load_audio(audio_files, resample, config, dummy_data):
+  def load_audio(audio_files, resample, config):
     """load audio data into memory from audio_files path"""
 
     audio_data = []
-    for idx, audio_file in enumerate(audio_files):
-      
-        if dummy_data:
+    for idx, audio_file in enumerate(audio_files):    
+        audio, native_sr = torchaudio.load(audio_file)
+        
+        if audio.shape[0] > 1: 
+          print("Warning: did stereo to mono conversion because only single channel audio files are supported")
+          audio = torch.mean(audio, dim=0, keepdim=True)
+          
+        # pad to match transcription with Whisper
+        if audio.shape[-1] > config.audio_length_samples:
+          audio = trim_tensor(audio, config.audio_length_samples)
+          
+        if resample is True:
+          resampler = T.Resample(native_sr, config.sr, dtype=audio.dtype)
+          audio = resampler(audio)
+          config.sr = native_sr
 
-          x = torch.linspace(0, 1, config.audio_length_samples)
-          y = torch.sin(torch.pi*10*x)
-          y = y.unsqueeze(0)
-          audio_data.append(y) 
-          
-        else:
-          
-          audio, native_sr = torchaudio.load(audio_file)
-          
-          if audio.shape[0] > 1: 
-            print("Warning: did stereo to mono conversion because only single channel audio files are supported")
-            audio = torch.mean(audio, dim=0, keepdim=True)
-            
-          # pad to match transcription with Whisper
-          if audio.shape[-1] > config.audio_length_samples:
-            audio = trim_tensor(audio, config.audio_length_samples)
-            
-          if resample is True:
-            resampler = T.Resample(native_sr, config.sr, dtype=audio.dtype)
-            audio = resampler(audio)
-            config.sr = native_sr
-
-          audio_data.append(audio)    
+        audio_data.append(audio)    
         
     return audio_data
 
@@ -176,13 +171,8 @@ def run(in_dir, out_dir, resample, audio_config, dummy_data):
           f"{dataset.mels[0].shape=}",
           sep="\n")
 
-  outputImg = os.path.join(out_dir, "waveform.png")
-  print("Raw waveform:", outputImg)
-  plot_waveform(dataset.waveforms[0], outputImg=outputImg, title="Raw waveform")
-  
-  outputImg = os.path.join(out_dir, "raw_specgram.png")
-  print("Raw specgram:", outputImg)
-  plot_spectrogram(dataset.mels[0], outputImg=outputImg, title="Raw spectrogram")    
+  save_waveform(out_dir, "waveform.png", "Raw waveform", dataset.waveforms[0])
+  save_spectrogram(out_dir, "raw_specgram.png", "Raw spectrogram", dataset.mels[0])   
 
   return dataset
 
