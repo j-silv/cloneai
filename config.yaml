@@ -75,4 +75,21 @@ tacotron2:
     out: data/processed/1-scott
 
 wavernn:
-  enable: 0
+  enable: 1
+  load_checkpoint: #"wavernn_checkpoint.pth" 
+  save_checkpoint: #"wavernn_checkpoint.pth"
+  seed: 1337
+  hyperparams:
+    lr: 0.001
+    betas: [0.9, 0.999]
+    eps: 1e-08
+    weight_decay: 1e-06
+    epochs: 10
+    split: [0.5, 0.25, 0.25]
+    batch_size: 6
+    kernel_size: 5 # first conv1d kernel size reduces spectrogram by kernel_size-1 samples
+    frames_per_forward: 100 # number of frames to feed into WaveRNN 
+    bits: 8 
+    upsample_scales: [5, 5, 8] # has to come out to hop_length
+  dir:
+    out: data/processed/1-scott

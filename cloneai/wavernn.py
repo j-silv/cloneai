@@ -1,7 +1,7 @@
 import random
 import torch
 from torch import nn
-from cloneai.utils import plot_spectrogram, plot_waveform, normalized_waveform_to_bits, bits_to_normalized_waveform
+from cloneai.utils import save_spectrogram, save_waveform, normalized_waveform_to_bits, bits_to_normalized_waveform
 from torch.utils.data import Dataset, DataLoader, random_split
 from torchaudio.models.wavernn import WaveRNN
 
@@ -78,19 +78,6 @@ def collate_fn_wrapper(frames_per_forward, hop_length, kernel_size, min_mag):
 
     target = normalized_waveform_to_bits(target, 8)
 
-    # print(f"{max_offsets=}")
-    # print(f"{spec_offsets=}")
-    # print(f"{wave_offsets=}")
-
-    #######################################
-    # sanity check
-    #######################################
-
-    # plot_waveform(waveform[0], xlim=(0, 0.01))
-    # plot_waveform(target[0], xlim=(1.01, 1.02), ylim=(0, 255))
-    # plot_spectrogram(mels[0], logCompressed=True)[0]
-    # plot_spectrogram(specgram[0], logCompressed=True)[0]
-
     return waveform.unsqueeze(1), specgram.unsqueeze(1), target.unsqueeze(1)
 
   return collate_fn
@@ -100,57 +87,72 @@ def collate_fn_wrapper(frames_per_forward, hop_length, kernel_size, min_mag):
 
 #######################################################################
 
-def run(data):
+def run(data, out_dir, seed, load_checkpoint_path, save_checkpoint_path, hyperparams):
+  #######################################
+  # load data
+  #######################################
 
+  torch.manual_seed(seed)  
+  
+  dataset = WaveRNNDataset(data)
+  
+  print(f"{hyperparams['split']=}")
+  print(f"{hyperparams['batch_size']=}")
 
+  train_split, val_split, test_split = random_split(dataset, hyperparams["split"]) 
 
-  batch_size = 4
-  frames_per_forward = 100 # number of frames to feed into WaveRNN
-  sr = 22050
-  min_mag = 0.01
-  hop_length = int(0.0125*sr)
-  kernel_size = 5 # first conv1d kernel size reduces spectrogram by kernel_size-1 samples
-  dataset = WaveRNNDataset(None, True)
+  train = DataLoader(train_split,
+                     batch_size=hyperparams["batch_size"],
+                     collate_fn=collate_fn_wrapper(hyperparams["frames_per_forward"],
+                                                  dataset.data.audio_config.frame_hop_samples,
+                                                  hyperparams["kernel_size"],
+                                                  dataset.data.audio_config.min_mag))
 
-  train = DataLoader(dataset,
-                    batch_size=batch_size,
-                    collate_fn=collate_fn_wrapper(frames_per_forward, hop_length, kernel_size, min_mag))
+  #######################################
+  # sanity check
+  #######################################
 
   elem = next(iter(train))
 
-  ##############################################################################
+  save_waveform(out_dir, "wavernn_waveform.png", "Chunked waveform", elem[0][0], xlim=(0, 0.01))
+  save_spectrogram(out_dir, "wavernn_specgram.png", "Chunked wavernn specgram", elem[1][0], logCompressed=True)
+  save_waveform(out_dir, "wavernn_target.png", "Target waveform shifted", elem[2][0], xlim=(0, 0.01), ylim=(0, 255))
 
-  bits = 8
-  epochs = 10
+  #######################################
+  # Set up model
+  #######################################
+
   criterion = nn.CrossEntropyLoss()
-  lr = 0.001
-  betas = (0.9, 0.999)
-  eps = 1e-08
-  weight_decay = 1e-06
-
 
   model = WaveRNN(
-      upsample_scales=[5, 5, 11], # gives hop_length samples of 275
-      n_classes=2**bits, # 8 bits
-      hop_length=275, # by default hop_length == 200
-      n_freq=80,
-      kernel_size=5
+      upsample_scales=hyperparams["upsample_scales"], 
+      n_classes=2**hyperparams["bits"],
+      hop_length=dataset.data.audio_config.frame_hop_samples,
+      n_freq=dataset.data.audio_config.n_mels,
+      kernel_size=hyperparams["kernel_size"]
   )
 
-  optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=betas,
-                              eps=eps, weight_decay=weight_decay)
+  optimizer = torch.optim.Adam(model.parameters(), lr=hyperparams["lr"],
+                              betas=hyperparams["betas"],
+                              eps=float(hyperparams["eps"]),
+                              weight_decay=float(hyperparams["weight_decay"]))
+  
   model = model.to(device)
-  model.train()
 
-  print("")
 
-  ########################################
-
+  #######################################
   # Training loop
+  #######################################  
 
-  for epoch in range(epochs):
-    for waveform, specgram, target in train:
-
+  for epoch in range(hyperparams["epochs"]):
+    model.train()
+    loss = 0.0
+    data_samples_seen = 0
+    
+    for batch, (waveform, specgram, target) in enumerate(train):
+      data_samples_seen += waveform.shape[0]
+      
+      
       waveform = waveform.to(device)
       specgram = specgram.to(device)
       target = target.to(device)
@@ -171,7 +173,7 @@ def run(data):
 
       if epoch % 1 == 0:
           loss = loss.item()
-          print(f"Epoch {epoch+1} | loss: {loss:>7f}")
+          print(f"Training | Epoch {epoch+1} | batch {batch} | samples {data_samples_seen}/{len(train_split)} | loss: {loss:>7f}")
 
 
   print("Done!")
@@ -185,11 +187,10 @@ def run(data):
   indices = torch.multinomial(probs, num_samples=1)
   indices = indices.view(target.shape[0], -1)
 
-  # predicted = bits_to_normalized_waveform(indices, 8)
+  predicted = bits_to_normalized_waveform(indices, 8)
 
-  plot_waveform(target[0], xlim=(0, 0.001), ylim=(0, 255))
-  plot_waveform(indices[0], xlim=(0, 0.001), ylim=(0, 255))
+  save_waveform(out_dir, "wavernn_target_waveform.png", "Target", target[0], xlim=(0, 0.001), ylim=(0, 255))
+  save_waveform(out_dir, "wavernn_predicted_waveform.png", "Predicted", indices[0], xlim=(0, 0.001), ylim=(0, 255))
 
-
-  plot_waveform(target[0], xlim=(1.0, 1.001), ylim=(0, 255))
-  plot_waveform(indices[0], xlim=(1.0, 1.001), ylim=(0, 255))
+  # plot_waveform(target[0], xlim=(1.0, 1.001), ylim=(0, 255))
+  # plot_waveform(indices[0], xlim=(1.0, 1.001), ylim=(0, 255))

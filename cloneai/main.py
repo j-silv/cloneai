@@ -66,6 +66,10 @@ if __name__ == "__main__":
     
     params = config["wavernn"]
     if params["enable"]:
-        wavernn.run(data)
+        wavernn.run(data, params["dir"]["out"],
+                    params["seed"],
+                    params["load_checkpoint"],
+                    params["save_checkpoint"],
+                    params["hyperparams"],)
 
     # -------------------------------------------------------------------  
